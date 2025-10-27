@@ -68,22 +68,34 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Verify user has enough staked
-    const { data: stakeData, error: stakeError } = await supabase
-      .from('stakes')
-      .select('amount')
+    console.log('Querying stakers for wallet:', walletAddress);
+    
+    const { data: stakerData, error: stakerError } = await supabase
+      .from('stakers')
+      .select('staked_amount')
       .eq('wallet_address', walletAddress)
       .single();
 
-    if (stakeError || !stakeData) {
+    console.log('Staker query result:', { stakerData, stakerError });
+
+    if (stakerError || !stakerData) {
+      // Try to get all stakers to debug
+      const { data: allStakers } = await supabase
+        .from('stakers')
+        .select('wallet_address, staked_amount')
+        .limit(5);
+      
+      console.log('Sample stakers in DB:', allStakers);
+      
       return new Response(
         JSON.stringify({ error: 'No stake found for this wallet' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    if (stakeData.amount < amountNum) {
+    if (stakerData.staked_amount < amountNum) {
       return new Response(
-        JSON.stringify({ error: 'Insufficient staked amount' }),
+        JSON.stringify({ error: `Insufficient staked balance. You have ${stakerData.staked_amount} AURACLE staked.` }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -113,16 +125,16 @@ Deno.serve(async (req) => {
     await connection.confirmTransaction(signature);
 
     // Update database
-    const newAmount = stakeData.amount - amountNum;
+    const newAmount = stakerData.staked_amount - amountNum;
     if (newAmount === 0) {
       await supabase
-        .from('stakes')
+        .from('stakers')
         .delete()
         .eq('wallet_address', walletAddress);
     } else {
       await supabase
-        .from('stakes')
-        .update({ amount: newAmount, updated_at: new Date().toISOString() })
+        .from('stakers')
+        .update({ staked_amount: newAmount, updated_at: new Date().toISOString() })
         .eq('wallet_address', walletAddress);
     }
 

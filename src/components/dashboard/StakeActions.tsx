@@ -187,7 +187,7 @@ export default function StakeActions({
       // Prepare payload - convert amount to string to avoid any number formatting issues
       const payload = {
         walletAddress: publicKey.toString(),
-        amount: amount.toString(), // Send as string to avoid scientific notation
+        amount: amount.toFixed(9), // Use toFixed to avoid scientific notation
         serializedTransaction: serializedTx
       };
       
