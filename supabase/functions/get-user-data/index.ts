@@ -66,6 +66,12 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Log first_staked_at for debugging
+    if (staker) {
+      console.log('Staker first_staked_at:', staker.first_staked_at);
+      console.log('Full staker data:', JSON.stringify(staker, null, 2));
+    }
+
     // Fetch transactions
     const { data: transactions, error: txError } = await supabaseClient
       .from('transactions')

@@ -156,6 +156,7 @@ Deno.serve(async (req) => {
         
         // Keep existing first_staked_at when staking more (don't reset)
         // It will only be reset on unstake
+        console.log('Updating existing staker - keeping first_staked_at:', existingStaker.first_staked_at);
         
         // Release stake lock after successful operation
         if (type === 'stake') {
@@ -173,12 +174,15 @@ Deno.serve(async (req) => {
         }
       } else {
         // New staker - set first_staked_at to now
+        const firstStakedAt = new Date().toISOString();
+        console.log('Creating new staker with first_staked_at:', firstStakedAt);
+        
         const { error: insertError } = await supabaseClient
           .from('stakers')
           .insert({ 
             wallet_address: walletAddress,
             staked_amount: newStakedAmount,
-            first_staked_at: new Date().toISOString(),
+            first_staked_at: firstStakedAt,
             stake_locked_until: null
           });
 
