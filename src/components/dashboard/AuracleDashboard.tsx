@@ -295,11 +295,24 @@ export default function AuracleDashboard() {
               }} />
             </div>
 
-            <div className="mb-6">
-              <RewardsCard 
-                pendingRewards={userData.pendingRewards}
-                onWithdraw={handleWithdrawRewards}
-              />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+              <div className="lg:col-span-2">
+                <RewardsCard 
+                  pendingRewards={userData.pendingRewards}
+                  onWithdraw={handleWithdrawRewards}
+                />
+              </div>
+              <div>
+                <StakeActions 
+                  stakedAmount={userData.staked_amount}
+                  onStake={async (amount) => {
+                    fetchUserData();
+                  }}
+                  onUnstake={async (amount) => {
+                    fetchUserData();
+                  }}
+                />
+              </div>
             </div>
             
             <TransactionHistory transactions={userData.transactions.map(tx => ({
