@@ -1,9 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from "@shared/cors.ts";
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from 'npm:@solana/web3.js@1.87.6';
-import { VAULT_WALLET } from "@shared/constants.ts";
+import { getAccount, getAssociatedTokenAddress } from 'npm:@solana/spl-token@0.3.9';
+import { VAULT_WALLET, AURACLE_MINT } from "@shared/constants.ts";
 
 const MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
+const AURACLE_DECIMALS = 6;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -16,25 +18,39 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
-    // Calculate stats from stakers table
+    // Get number of stakers from database
     const { data: stakers, error: stakersError } = await supabaseClient
       .from('stakers')
-      .select('staked_amount');
+      .select('wallet_address');
 
     if (stakersError) throw stakersError;
 
-    const totalStaked = stakers?.reduce((sum, s) => sum + s.staked_amount, 0) || 0;
     const numberOfStakers = stakers?.length || 0;
+
+    const connection = new Connection(MAINNET_RPC, 'confirmed');
+    const vaultPublicKey = new PublicKey(VAULT_WALLET);
+    const mintPublicKey = new PublicKey(AURACLE_MINT);
 
     // Fetch real vault SOL balance from Solana blockchain
     let vaultSolBalance = 0;
     try {
-      const connection = new Connection(MAINNET_RPC, 'confirmed');
-      const vaultPublicKey = new PublicKey(VAULT_WALLET);
       const balance = await connection.getBalance(vaultPublicKey);
       vaultSolBalance = balance / LAMPORTS_PER_SOL;
     } catch (error) {
-      console.error('Error fetching vault balance:', error);
+      console.error('Error fetching vault SOL balance:', error);
+    }
+
+    // Fetch real AURACLE token balance from vault wallet
+    let totalStaked = 0;
+    try {
+      const vaultTokenAccount = await getAssociatedTokenAddress(
+        mintPublicKey,
+        vaultPublicKey
+      );
+      const accountInfo = await getAccount(connection, vaultTokenAccount);
+      totalStaked = Number(accountInfo.amount) / Math.pow(10, AURACLE_DECIMALS);
+    } catch (error) {
+      console.error('Error fetching vault AURACLE balance:', error);
     }
 
     // Calculate weekly reward pool (50% of vault balance)

@@ -186,6 +186,15 @@ export default function AuracleDashboard() {
     }
   };
 
+  const handleUnstake = async (amount: number) => {
+    console.log('Unstake completed, refreshing data...');
+    // Wait a moment for the database to update
+    setTimeout(() => {
+      fetchUserData();
+      fetchPlatformStats();
+    }, 1000);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
       {/* Header */}
@@ -273,9 +282,7 @@ export default function AuracleDashboard() {
                   onStake={async (amount) => {
                     fetchUserData();
                   }}
-                  onUnstake={async (amount) => {
-                    fetchUserData();
-                  }}
+                  onUnstake={handleUnstake}
                 />
               </div>
             </div>
@@ -356,9 +363,7 @@ export default function AuracleDashboard() {
                   onStake={async (amount) => {
                     fetchUserData();
                   }}
-                  onUnstake={async (amount) => {
-                    fetchUserData();
-                  }}
+                  onUnstake={handleUnstake}
                 />
               </div>
             </div>
