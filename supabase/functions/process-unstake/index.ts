@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
-import { Connection, Transaction, Keypair, PublicKey } from 'https://esm.sh/@solana/web3.js@1.87.6';
+import { Connection, Transaction, Keypair, PublicKey, sendAndConfirmTransaction } from 'https://esm.sh/@solana/web3.js@1.87.6';
 import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from 'https://esm.sh/@solana/spl-token@0.3.9';
 import { corsHeaders } from '@shared/cors.ts';
 
@@ -29,6 +29,7 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_KEY');
     
     if (!supabaseUrl || !supabaseKey) {
+      console.error('Missing Supabase config');
       return new Response(
         JSON.stringify({ error: 'Server configuration error' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -45,6 +46,7 @@ Deno.serve(async (req) => {
       .single();
 
     if (stakerError || !stakerData) {
+      console.error('Staker lookup error:', stakerError);
       return new Response(
         JSON.stringify({ error: 'No stake found for this wallet' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -61,19 +63,39 @@ Deno.serve(async (req) => {
     // Get vault private key
     const vaultPrivateKeyStr = Deno.env.get('VAULT_PRIVATE_KEY');
     if (!vaultPrivateKeyStr) {
+      console.error('Missing VAULT_PRIVATE_KEY');
       return new Response(
         JSON.stringify({ error: 'Vault key not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Create and send transaction
-    const connection = new Connection(SOLANA_RPC_URL);
-    const vaultKeypair = Keypair.fromSecretKey(
-      Uint8Array.from(JSON.parse(vaultPrivateKeyStr))
-    );
+    console.log('Creating Solana transaction...');
+    
+    // Parse vault keypair - handle both array and string formats
+    let vaultSecretKey;
+    try {
+      // Try parsing as JSON array first
+      const parsed = JSON.parse(vaultPrivateKeyStr);
+      if (Array.isArray(parsed)) {
+        vaultSecretKey = Uint8Array.from(parsed);
+      } else {
+        throw new Error('VAULT_PRIVATE_KEY must be a JSON array of numbers');
+      }
+    } catch (parseError) {
+      console.error('Failed to parse VAULT_PRIVATE_KEY:', parseError.message);
+      return new Response(
+        JSON.stringify({ error: 'Invalid vault key format. Must be a JSON array like [1,2,3,...]' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const connection = new Connection(SOLANA_RPC_URL, 'confirmed');
+    const vaultKeypair = Keypair.fromSecretKey(vaultSecretKey);
     const userPublicKey = new PublicKey(walletAddress);
     const mintPublicKey = new PublicKey(AURACLE_MINT);
+
+    console.log('Vault address:', vaultKeypair.publicKey.toString());
 
     // Get token accounts
     const fromTokenAccount = await getAssociatedTokenAddress(
@@ -86,12 +108,18 @@ Deno.serve(async (req) => {
       userPublicKey
     );
 
+    console.log('From token account:', fromTokenAccount.toString());
+    console.log('To token account:', toTokenAccount.toString());
+
     // Create transfer instruction
+    const amountInLamports = BigInt(Math.floor(amount * Math.pow(10, AURACLE_DECIMALS)));
+    console.log('Transfer amount (lamports):', amountInLamports.toString());
+
     const transferInstruction = createTransferInstruction(
       fromTokenAccount,
       toTokenAccount,
       vaultKeypair.publicKey,
-      BigInt(Math.floor(amount * Math.pow(10, AURACLE_DECIMALS))),
+      amountInLamports,
       [],
       TOKEN_PROGRAM_ID
     );
@@ -101,10 +129,16 @@ Deno.serve(async (req) => {
     const { blockhash } = await connection.getLatestBlockhash();
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = vaultKeypair.publicKey;
-    transaction.sign(vaultKeypair);
 
-    const signature = await connection.sendRawTransaction(transaction.serialize());
-    await connection.confirmTransaction(signature);
+    console.log('Signing and sending transaction...');
+    const signature = await sendAndConfirmTransaction(
+      connection,
+      transaction,
+      [vaultKeypair],
+      { commitment: 'confirmed' }
+    );
+
+    console.log('Transaction confirmed:', signature);
 
     // Update database
     const newAmount = stakerData.staked_amount - amount;
@@ -129,6 +163,8 @@ Deno.serve(async (req) => {
       status: 'completed'
     });
 
+    console.log('Database updated successfully');
+
     return new Response(
       JSON.stringify({ success: true, signature }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -136,8 +172,9 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Unstake error:', error);
+    console.error('Error stack:', error.stack);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error.message || 'Unknown error occurred' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
