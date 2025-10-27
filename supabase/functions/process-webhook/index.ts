@@ -1,14 +1,28 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { corsHeaders } from "@shared/cors.ts";
-import { VAULT_WALLET } from "@shared/constants.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { corsHeaders } from '@shared/cors.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders, status: 200 });
   }
 
   try {
+    console.log('Webhook received');
+    
+    // Verify authentication header
+    const authHeader = req.headers.get('authorization');
+    const expectedAuth = Deno.env.get('HELIUS_WEBHOOK_SECRET');
+    
+    if (!authHeader || authHeader !== `Bearer ${expectedAuth}`) {
+      console.error('Invalid authentication header');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const payload = await req.json();
+    console.log('Webhook payload:', JSON.stringify(payload, null, 2));
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',

@@ -117,6 +117,7 @@ export type Database = {
           last_updated: string | null
           pending_rewards: number
           staked_amount: number
+          unstake_locked_until: string | null
           version: number
           wallet_address: string
         }
@@ -126,6 +127,7 @@ export type Database = {
           last_updated?: string | null
           pending_rewards?: number
           staked_amount?: number
+          unstake_locked_until?: string | null
           version?: number
           wallet_address: string
         }
@@ -135,6 +137,7 @@ export type Database = {
           last_updated?: string | null
           pending_rewards?: number
           staked_amount?: number
+          unstake_locked_until?: string | null
           version?: number
           wallet_address?: string
         }

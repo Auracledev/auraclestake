@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from "@shared/cors.ts";
 import { checkRateLimit, RATE_LIMIT_CONFIGS } from "@shared/rate-limiter.ts";
 import { checkTransactionDuplicate } from "@shared/transaction-dedup.ts";
+import { MAX_STAKE_AMOUNT, SIGNATURE_EXPIRY_MS } from "@shared/constants.ts";
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -10,15 +11,37 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { walletAddress, amount, txSignature, type } = body;
+    const { walletAddress, amount, txSignature, type, timestamp } = body;
 
-    console.log('Record stake request:', { walletAddress, amount, txSignature, type });
+    console.log('Record stake request:', { walletAddress, amount, txSignature, type, timestamp });
 
     if (!walletAddress || !amount || !txSignature || !type) {
       const errorMsg = `Missing required fields: ${!walletAddress ? 'walletAddress ' : ''}${!amount ? 'amount ' : ''}${!txSignature ? 'txSignature ' : ''}${!type ? 'type' : ''}`;
       console.error(errorMsg);
       return new Response(
         JSON.stringify({ error: errorMsg }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate timestamp (5-minute expiry)
+    if (timestamp) {
+      const requestTime = new Date(timestamp).getTime();
+      const now = Date.now();
+      if (now - requestTime > SIGNATURE_EXPIRY_MS) {
+        console.error('Signature expired:', { timestamp, now, diff: now - requestTime });
+        return new Response(
+          JSON.stringify({ error: 'Signature expired. Please try again.' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // Validate amount limits
+    if (type === 'stake' && parseFloat(amount) > MAX_STAKE_AMOUNT) {
+      console.error('Amount exceeds maximum:', amount);
+      return new Response(
+        JSON.stringify({ error: `Maximum stake amount is ${MAX_STAKE_AMOUNT} AURACLE` }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
