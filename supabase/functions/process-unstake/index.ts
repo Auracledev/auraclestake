@@ -5,57 +5,21 @@ import { corsHeaders } from '@shared/cors.ts';
 const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 
 Deno.serve(async (req) => {
+  console.log('Function invoked, method:', req.method);
+  
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    console.log('Handling OPTIONS request');
+    return new Response('ok', { headers: corsHeaders, status: 200 });
   }
 
   try {
     console.log('Process unstake request received');
-    console.log('Request headers:', Object.fromEntries(req.headers.entries()));
     
-    // Read the raw body first for debugging
     const bodyText = await req.text();
-    console.log('Raw request body:', bodyText);
-    console.log('Body length:', bodyText.length);
+    const body = JSON.parse(bodyText);
+    const { walletAddress, amount, serializedTransaction } = body;
     
-    // Parse the JSON
-    let body;
-    try {
-      body = JSON.parse(bodyText);
-    } catch (parseError) {
-      console.error('JSON parse error:', parseError);
-      console.error('Failed to parse body:', bodyText);
-      return new Response(
-        JSON.stringify({ 
-          error: `Failed to parse JSON: ${parseError.message}`,
-          receivedBody: bodyText.substring(0, 100)
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const { walletAddress, amount, serializedTransaction, signature, message } = body;
-    
-    console.log('Parsed request:', { walletAddress, amount, hasSignature: !!signature, hasMessage: !!message });
-
-    // Verify wallet signature
-    if (!signature || !message) {
-      return new Response(
-        JSON.stringify({ error: 'Missing signature or message for verification' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const isValidSignature = await verifyWalletSignature(walletAddress, signature, message);
-    if (!isValidSignature) {
-      console.error('Invalid wallet signature');
-      return new Response(
-        JSON.stringify({ error: 'Invalid wallet signature' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log('Wallet signature verified successfully');
+    console.log('Parsed request:', { walletAddress, amount });
 
     // Convert amount from string to number
     const amountNum = parseFloat(amount);
@@ -66,15 +30,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Initialize Supabase client - check env vars first
+    // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_KEY');
-    
-    console.log('Env check:', { 
-      hasUrl: !!supabaseUrl, 
-      hasKey: !!supabaseKey,
-      urlValue: supabaseUrl 
-    });
     
     if (!supabaseUrl || !supabaseKey) {
       return new Response(
@@ -86,25 +44,13 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Verify user has enough staked
-    console.log('Querying stakers for wallet:', walletAddress);
-    
     const { data: stakerData, error: stakerError } = await supabase
       .from('stakers')
       .select('staked_amount')
       .eq('wallet_address', walletAddress)
       .single();
 
-    console.log('Staker query result:', { stakerData, stakerError });
-
     if (stakerError || !stakerData) {
-      // Try to get all stakers to debug
-      const { data: allStakers } = await supabase
-        .from('stakers')
-        .select('wallet_address, staked_amount')
-        .limit(5);
-      
-      console.log('Sample stakers in DB:', allStakers);
-      
       return new Response(
         JSON.stringify({ error: 'No stake found for this wallet' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

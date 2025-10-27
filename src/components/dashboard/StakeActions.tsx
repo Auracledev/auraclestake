@@ -176,17 +176,9 @@ export default function StakeActions({
 
     setIsUnstaking(true);
     try {
-      // Step 1: Request wallet signature for verification
-      const message = `Auracle Staking - Unstake Request\nWallet: ${publicKey.toString()}\nAmount: ${amount} AURACLE\nTimestamp: ${Date.now()}`;
-      const messageBytes = new TextEncoder().encode(message);
+      console.log('Creating unstake transaction');
       
-      // Sign the message with Phantom
-      const signedMessage = await window.solana.signMessage(messageBytes, 'utf8');
-      const signature = btoa(String.fromCharCode(...signedMessage.signature));
-      
-      console.log('Wallet signature obtained');
-      
-      // Step 2: Create transaction but DON'T sign it - backend will handle signing with vault key
+      // Create transaction but DON'T sign it - backend will handle signing with vault key
       const transaction = await createUnstakeTransaction(publicKey, amount);
       
       // Serialize transaction to base64 string
@@ -194,18 +186,16 @@ export default function StakeActions({
         transaction.serialize({ requireAllSignatures: false })
       ).toString('base64');
       
-      // Prepare payload with signature verification
+      // Prepare payload
       const payload = {
         walletAddress: publicKey.toString(),
         amount: String(amount),
-        serializedTransaction: serializedTx,
-        signature,
-        message
+        serializedTransaction: serializedTx
       };
       
-      console.log('Sending unstake request with signature verification');
+      console.log('Sending unstake request');
       
-      // Send to backend with signature
+      // Send to backend
       const response = await supabase.functions.invoke('supabase-functions-process-unstake', {
         body: payload
       });
