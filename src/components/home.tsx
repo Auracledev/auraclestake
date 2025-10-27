@@ -1,8 +1,5 @@
-function Home() {
-  return (
-    <div className="w-screen h-screen">
-    </div>
-  )
-}
+import AuracleDashboard from "./dashboard/AuracleDashboard";
 
-export default Home
+export default function Home() {
+  return <AuracleDashboard />;
+}
