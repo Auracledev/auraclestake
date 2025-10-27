@@ -176,52 +176,20 @@ export default function StakeActions({
 
     setIsUnstaking(true);
     try {
-      console.log('Creating unstake transaction');
-      
-      // Create transaction but DON'T sign it - backend will handle signing with vault key
-      const transaction = await createUnstakeTransaction(publicKey, amount);
-      
-      // Serialize transaction to base64 string
-      const serializedTx = Buffer.from(
-        transaction.serialize({ requireAllSignatures: false })
-      ).toString('base64');
-      
-      // Prepare payload - send amount as number, not string
-      const payload = {
-        walletAddress: publicKey.toString(),
-        amount: amount, // Send as number
-        serializedTransaction: serializedTx
-      };
-      
-      console.log('Sending unstake request');
-      
-      // Send to backend
+      // Simple approach: just send wallet address and amount
+      // Backend will verify the user has staked amount and process
       const response = await supabase.functions.invoke('supabase-functions-process-unstake', {
-        body: payload
+        body: {
+          walletAddress: publicKey.toString(),
+          amount: amount
+        }
       });
 
-      console.log('Full response:', response);
-
       if (response.error) {
-        console.error('Edge function error:', response.error);
-        
-        let errorMessage = 'Unknown error';
-        try {
-          if (response.response) {
-            const bodyText = await response.response.text();
-            console.log('Error body:', bodyText);
-            const errorData = JSON.parse(bodyText);
-            errorMessage = errorData.error || errorMessage;
-          }
-        } catch (e) {
-          console.error('Could not parse error body:', e);
-        }
-        
-        throw new Error(errorMessage);
+        throw new Error(response.error.message);
       }
 
       if (response.data?.error) {
-        console.error('Backend error:', response.data.error);
         throw new Error(response.data.error);
       }
 
@@ -235,7 +203,6 @@ export default function StakeActions({
       fetchBalance();
     } catch (error: any) {
       console.error('Unstake error:', error);
-      console.error('Error details:', JSON.stringify(error, null, 2));
       toast({
         title: "Unstake failed",
         description: error.message || "Failed to unstake tokens",
