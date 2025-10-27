@@ -179,15 +179,23 @@ export default function StakeActions({
       // Create transaction but DON'T sign it - backend will handle signing with vault key
       const transaction = await createUnstakeTransaction(publicKey, amount);
       
+      // Serialize transaction to base64 string
+      const serializedTx = Buffer.from(
+        transaction.serialize({ requireAllSignatures: false })
+      ).toString('base64');
+      
+      console.log('Sending unstake request:', {
+        walletAddress: publicKey.toString(),
+        amount,
+        txLength: serializedTx.length
+      });
+      
       // Send UNSIGNED transaction to backend
       const response = await supabase.functions.invoke('supabase-functions-process-unstake', {
         body: {
           walletAddress: publicKey.toString(),
           amount,
-          serializedTransaction: Buffer.from(transaction.serialize({ requireAllSignatures: false })).toString('base64')
-        },
-        headers: {
-          'Content-Type': 'application/json',
+          serializedTransaction: serializedTx
         }
       });
 
