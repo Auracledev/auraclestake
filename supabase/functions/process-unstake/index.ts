@@ -213,6 +213,7 @@ Deno.serve(async (req) => {
       wallet_address: walletAddress,
       type: 'unstake',
       amount,
+      token: 'AURACLE',
       signature: txSignature,
       status: 'completed'
     });

@@ -224,8 +224,13 @@ export default function StakeActions({
       });
 
       setUnstakeAmount("");
-      onUnstake(amount);
-      fetchBalance();
+      
+      // Force immediate refresh of user data and balance
+      await Promise.all([
+        fetchBalance(),
+        onUnstake(amount)
+      ]);
+      
     } catch (error: any) {
       console.error('Unstake error:', error);
       
