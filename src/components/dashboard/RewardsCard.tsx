@@ -66,17 +66,17 @@ export default function RewardsCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6 text-center">
+        <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6 text-center min-h-[120px] flex flex-col justify-center">
           <div className="flex items-center justify-center gap-2 mb-2">
-            <Coins className="h-6 w-6 text-green-400" />
-            <span className="text-4xl font-bold text-white tabular-nums">
+            <Coins className="h-6 w-6 text-green-400 flex-shrink-0" />
+            <span className="text-4xl font-bold text-white tabular-nums leading-none">
               {displayRewards.toFixed(6)}
             </span>
-            <span className="text-xl text-slate-400">SOL</span>
+            <span className="text-xl text-slate-400 flex-shrink-0">SOL</span>
           </div>
           <p className="text-sm text-slate-400">Pending Rewards</p>
           {rewardsPerSecond > 0 && (
-            <p className="text-xs text-green-400 mt-2">
+            <p className="text-xs text-green-400 mt-2 tabular-nums">
               +{(rewardsPerSecond * 60).toFixed(8)} SOL/min
             </p>
           )}
