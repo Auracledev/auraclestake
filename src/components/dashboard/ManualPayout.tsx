@@ -8,9 +8,10 @@ import { supabase } from "@/lib/supabase";
 
 interface ManualPayoutProps {
   onPayoutComplete?: () => void;
+  onTriggerPayout?: () => Promise<void>;
 }
 
-export default function ManualPayout({ onPayoutComplete }: ManualPayoutProps) {
+export default function ManualPayout({ onPayoutComplete, onTriggerPayout }: ManualPayoutProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastPayout, setLastPayout] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,12 +68,17 @@ export default function ManualPayout({ onPayoutComplete }: ManualPayoutProps) {
   const handleManualPayout = async () => {
     setIsProcessing(true);
     try {
-      // Call the calculate-rewards edge function
-      const { data, error } = await supabase.functions.invoke('supabase-functions-calculate-rewards', {
-        body: { manual: true }
-      });
+      // If custom trigger function is provided, use it
+      if (onTriggerPayout) {
+        await onTriggerPayout();
+      } else {
+        // Default behavior: call the calculate-rewards edge function
+        const { data, error } = await supabase.functions.invoke('supabase-functions-calculate-rewards', {
+          body: { manual: true }
+        });
 
-      if (error) throw error;
+        if (error) throw error;
+      }
 
       // Refresh the last payout time
       await fetchLastPayout();
