@@ -64,12 +64,32 @@ export default function StakeActions({
 
     setIsStaking(true);
     try {
+      // Create and sign transaction
       const transaction = await createStakeTransaction(publicKey, amount);
       const signedTx = await signTransaction(transaction);
       
-      const signature = await connection.sendRawTransaction(signedTx.serialize());
-      await connection.confirmTransaction(signature, 'confirmed');
+      // Send with proper options
+      const signature = await connection.sendRawTransaction(
+        signedTx.serialize(),
+        {
+          skipPreflight: false,
+          preflightCommitment: 'confirmed',
+          maxRetries: 3
+        }
+      );
+      
+      // Wait for confirmation
+      const confirmation = await connection.confirmTransaction({
+        signature,
+        blockhash: transaction.recentBlockhash!,
+        lastValidBlockHeight: (await connection.getLatestBlockhash()).lastValidBlockHeight
+      }, 'confirmed');
 
+      if (confirmation.value.err) {
+        throw new Error('Transaction failed');
+      }
+
+      // Record stake in database
       await supabase.functions.invoke('supabase-functions-record-stake', {
         body: {
           walletAddress: publicKey.toString(),

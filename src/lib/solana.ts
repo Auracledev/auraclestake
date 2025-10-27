@@ -1,8 +1,17 @@
-import { Connection, PublicKey, Transaction, SystemProgram, TransactionInstruction, ComputeBudgetProgram } from '@solana/web3.js';
+import { 
+  Connection, 
+  PublicKey, 
+  Transaction, 
+  TransactionInstruction, 
+  ComputeBudgetProgram,
+  TransactionMessage,
+  VersionedTransaction
+} from '@solana/web3.js';
 import { 
   getAssociatedTokenAddress, 
   createTransferInstruction,
-  TOKEN_PROGRAM_ID 
+  TOKEN_PROGRAM_ID,
+  getAccount
 } from '@solana/spl-token';
 import { VAULT_WALLET, AURACLE_MINT } from './supabase';
 
@@ -10,41 +19,10 @@ const MAINNET_RPC = 'https://mainnet.helius-rpc.com/?api-key=e9ab9721-93fa-4533-
 
 export const connection = new Connection(MAINNET_RPC, 'confirmed');
 
-// Create a memo instruction to add context to transactions
-function createMemoInstruction(memo: string, signer: PublicKey): TransactionInstruction {
-  const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
-  return new TransactionInstruction({
-    keys: [{ pubkey: signer, isSigner: true, isWritable: false }],
-    programId: MEMO_PROGRAM_ID,
-    data: Buffer.from(memo, 'utf-8'),
-  });
-}
-
 export async function createStakeTransaction(
   walletPublicKey: PublicKey,
   amount: number
 ): Promise<Transaction> {
-  const transaction = new Transaction();
-  
-  // Add compute budget to ensure transaction has enough compute units
-  const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
-    units: 200_000
-  });
-  transaction.add(computeBudgetIx);
-  
-  // Add priority fee to help with transaction landing
-  const priorityFeeIx = ComputeBudgetProgram.setComputeUnitPrice({
-    microLamports: 1000
-  });
-  transaction.add(priorityFeeIx);
-  
-  // Add memo instruction for transparency
-  const memoInstruction = createMemoInstruction(
-    `Auracle Staking: Stake ${amount} AURACLE`,
-    walletPublicKey
-  );
-  transaction.add(memoInstruction);
-  
   const mintPublicKey = new PublicKey(AURACLE_MINT);
   const vaultPublicKey = new PublicKey(VAULT_WALLET);
   
@@ -57,21 +35,50 @@ export async function createStakeTransaction(
     mintPublicKey,
     vaultPublicKey
   );
+
+  // Verify accounts exist before creating transaction
+  try {
+    await getAccount(connection, fromTokenAccount);
+    await getAccount(connection, toTokenAccount);
+  } catch (error) {
+    throw new Error('Token accounts not found. Please ensure you have AURACLE tokens.');
+  }
+
+  const instructions: TransactionInstruction[] = [];
   
-  const transferInstruction = createTransferInstruction(
-    fromTokenAccount,
-    toTokenAccount,
-    walletPublicKey,
-    amount * Math.pow(10, 9),
-    [],
-    TOKEN_PROGRAM_ID
+  // 1. Set compute unit limit (helps with simulation)
+  instructions.push(
+    ComputeBudgetProgram.setComputeUnitLimit({
+      units: 100_000
+    })
   );
   
-  transaction.add(transferInstruction);
+  // 2. Set compute unit price (priority fee)
+  instructions.push(
+    ComputeBudgetProgram.setComputeUnitPrice({
+      microLamports: 5000
+    })
+  );
   
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+  // 3. Main transfer instruction
+  instructions.push(
+    createTransferInstruction(
+      fromTokenAccount,
+      toTokenAccount,
+      walletPublicKey,
+      BigInt(Math.floor(amount * Math.pow(10, 9))),
+      [],
+      TOKEN_PROGRAM_ID
+    )
+  );
+  
+  // Create transaction with proper structure
+  const transaction = new Transaction();
+  transaction.add(...instructions);
+  
+  // Get latest blockhash with confirmed commitment
+  const { blockhash } = await connection.getLatestBlockhash('confirmed');
   transaction.recentBlockhash = blockhash;
-  transaction.lastValidBlockHeight = lastValidBlockHeight;
   transaction.feePayer = walletPublicKey;
   
   return transaction;
@@ -81,27 +88,6 @@ export async function createUnstakeTransaction(
   walletPublicKey: PublicKey,
   amount: number
 ): Promise<Transaction> {
-  const transaction = new Transaction();
-  
-  // Add compute budget to ensure transaction has enough compute units
-  const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
-    units: 200_000
-  });
-  transaction.add(computeBudgetIx);
-  
-  // Add priority fee to help with transaction landing
-  const priorityFeeIx = ComputeBudgetProgram.setComputeUnitPrice({
-    microLamports: 1000
-  });
-  transaction.add(priorityFeeIx);
-  
-  // Add memo instruction for transparency
-  const memoInstruction = createMemoInstruction(
-    `Auracle Staking: Unstake ${amount} AURACLE`,
-    walletPublicKey
-  );
-  transaction.add(memoInstruction);
-  
   const mintPublicKey = new PublicKey(AURACLE_MINT);
   const vaultPublicKey = new PublicKey(VAULT_WALLET);
   
@@ -114,21 +100,40 @@ export async function createUnstakeTransaction(
     mintPublicKey,
     walletPublicKey
   );
+
+  const instructions: TransactionInstruction[] = [];
   
-  const transferInstruction = createTransferInstruction(
-    fromTokenAccount,
-    toTokenAccount,
-    vaultPublicKey,
-    amount * Math.pow(10, 9),
-    [],
-    TOKEN_PROGRAM_ID
+  // 1. Set compute unit limit
+  instructions.push(
+    ComputeBudgetProgram.setComputeUnitLimit({
+      units: 100_000
+    })
   );
   
-  transaction.add(transferInstruction);
+  // 2. Set compute unit price
+  instructions.push(
+    ComputeBudgetProgram.setComputeUnitPrice({
+      microLamports: 5000
+    })
+  );
   
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+  // 3. Main transfer instruction
+  instructions.push(
+    createTransferInstruction(
+      fromTokenAccount,
+      toTokenAccount,
+      vaultPublicKey,
+      BigInt(Math.floor(amount * Math.pow(10, 9))),
+      [],
+      TOKEN_PROGRAM_ID
+    )
+  );
+  
+  const transaction = new Transaction();
+  transaction.add(...instructions);
+  
+  const { blockhash } = await connection.getLatestBlockhash('confirmed');
   transaction.recentBlockhash = blockhash;
-  transaction.lastValidBlockHeight = lastValidBlockHeight;
   transaction.feePayer = walletPublicKey;
   
   return transaction;
