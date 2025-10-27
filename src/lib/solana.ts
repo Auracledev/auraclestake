@@ -6,7 +6,7 @@ import {
 } from '@solana/spl-token';
 import { VAULT_WALLET, AURACLE_MINT } from './supabase';
 
-const MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
+const MAINNET_RPC = 'https://mainnet.helius-rpc.com/?api-key=e9ab9721-93fa-4533-b148-7e240bd38192';
 
 export const connection = new Connection(MAINNET_RPC, 'confirmed');
 
