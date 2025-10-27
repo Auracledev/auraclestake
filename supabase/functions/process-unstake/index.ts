@@ -20,6 +20,8 @@ Deno.serve(async (req) => {
   try {
     const { walletAddress, amount, serializedTransaction } = await req.json();
 
+    console.log('Unstake request:', { walletAddress, amount, hasTransaction: !!serializedTransaction });
+
     if (!walletAddress || !amount || !serializedTransaction) {
       throw new Error('Missing required fields');
     }

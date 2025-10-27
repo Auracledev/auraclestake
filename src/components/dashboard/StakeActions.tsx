@@ -191,7 +191,15 @@ export default function StakeActions({
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Edge function error:', error);
+        throw new Error(error.message || 'Failed to process unstake');
+      }
+
+      if (data?.error) {
+        console.error('Backend error:', data.error);
+        throw new Error(data.error);
+      }
 
       toast({
         title: "Unstake successful!",
