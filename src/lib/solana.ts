@@ -17,8 +17,8 @@ import { VAULT_WALLET, AURACLE_MINT } from './supabase';
 
 const MAINNET_RPC = 'https://mainnet.helius-rpc.com/?api-key=e9ab9721-93fa-4533-b148-7e240bd38192';
 
-// AURACLE token has 9 decimals
-const AURACLE_DECIMALS = 9;
+// AURACLE token has 6 decimals
+const AURACLE_DECIMALS = 6;
 
 export const connection = new Connection(MAINNET_RPC, 'confirmed');
 
