@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
       .from('stakers')
       .select('*')
       .eq('wallet_address', walletAddress)
-      .single();
+      .maybeSingle();
 
     let newStakedAmount = 0;
     if (type === 'stake') {
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
       .from('platform_stats')
       .select('id')
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (existingStats) {
       // Update existing row
