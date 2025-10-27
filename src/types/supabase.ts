@@ -99,6 +99,7 @@ export type Database = {
           last_updated: string | null
           pending_rewards: number
           staked_amount: number
+          version: number
           wallet_address: string
         }
         Insert: {
@@ -107,6 +108,7 @@ export type Database = {
           last_updated?: string | null
           pending_rewards?: number
           staked_amount?: number
+          version?: number
           wallet_address: string
         }
         Update: {
@@ -115,6 +117,7 @@ export type Database = {
           last_updated?: string | null
           pending_rewards?: number
           staked_amount?: number
+          version?: number
           wallet_address?: string
         }
         Relationships: []
@@ -176,6 +179,24 @@ export type Database = {
           payload?: Json
           processed?: boolean | null
           processed_at?: string | null
+        }
+        Relationships: []
+      }
+      withdrawal_locks: {
+        Row: {
+          expires_at: string
+          locked_at: string
+          wallet_address: string
+        }
+        Insert: {
+          expires_at?: string
+          locked_at?: string
+          wallet_address: string
+        }
+        Update: {
+          expires_at?: string
+          locked_at?: string
+          wallet_address?: string
         }
         Relationships: []
       }

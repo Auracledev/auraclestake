@@ -11,7 +11,6 @@ Deno.serve(async (req) => {
     const { walletAddress, amount, txSignature, type } = body;
 
     console.log('Record stake request:', { walletAddress, amount, txSignature, type });
-    console.log('Full request body:', JSON.stringify(body));
 
     if (!walletAddress || !amount || !txSignature || !type) {
       const errorMsg = `Missing required fields: ${!walletAddress ? 'walletAddress ' : ''}${!amount ? 'amount ' : ''}${!txSignature ? 'txSignature ' : ''}${!type ? 'type' : ''}`;
@@ -23,14 +22,10 @@ Deno.serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
-    console.log('Supabase URL:', supabaseUrl);
-    console.log('Supabase Key exists:', !!supabaseKey);
-    console.log('Available env vars:', Object.keys(Deno.env.toObject()));
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_KEY')!;
 
     if (!supabaseUrl || !supabaseKey) {
-      const errorMsg = `Missing Supabase configuration - URL: ${!!supabaseUrl}, Key: ${!!supabaseKey}`;
+      const errorMsg = `Missing Supabase configuration`;
       console.error(errorMsg);
       return new Response(
         JSON.stringify({ error: errorMsg }),
@@ -40,53 +35,92 @@ Deno.serve(async (req) => {
 
     const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
-    const { data: existingStaker, error: fetchError } = await supabaseClient
-      .from('stakers')
-      .select('*')
-      .eq('wallet_address', walletAddress)
-      .maybeSingle();
-
-    if (fetchError) {
-      console.error('Error fetching staker:', fetchError);
-      throw new Error(`Failed to fetch staker: ${fetchError.message}`);
-    }
-
-    console.log('Existing staker:', existingStaker);
-
+    const maxRetries = 3;
+    let retryCount = 0;
+    let success = false;
     let newStakedAmount = 0;
-    if (type === 'stake') {
-      newStakedAmount = (existingStaker?.staked_amount || 0) + parseFloat(amount);
-    } else if (type === 'unstake') {
-      newStakedAmount = Math.max(0, (existingStaker?.staked_amount || 0) - parseFloat(amount));
+
+    while (retryCount < maxRetries && !success) {
+      try {
+        const { data: existingStaker, error: fetchError } = await supabaseClient
+          .from('stakers')
+          .select('*')
+          .eq('wallet_address', walletAddress)
+          .maybeSingle();
+
+        if (fetchError) {
+          console.error('Error fetching staker:', fetchError);
+          throw new Error(`Failed to fetch staker: ${fetchError.message}`);
+        }
+
+        const currentVersion = existingStaker?.version || 0;
+
+        if (type === 'stake') {
+          newStakedAmount = (existingStaker?.staked_amount || 0) + parseFloat(amount);
+        } else if (type === 'unstake') {
+          const currentStaked = existingStaker?.staked_amount || 0;
+          if (parseFloat(amount) > currentStaked) {
+            throw new Error(`Insufficient staked balance. You have ${currentStaked} AURACLE staked.`);
+          }
+          newStakedAmount = Math.max(0, currentStaked - parseFloat(amount));
+        }
+
+        if (existingStaker) {
+          const { data: updateData, error: updateError } = await supabaseClient
+            .from('stakers')
+            .update({ 
+              staked_amount: newStakedAmount,
+              last_updated: new Date().toISOString(),
+              version: currentVersion + 1
+            })
+            .eq('wallet_address', walletAddress)
+            .eq('version', currentVersion)
+            .select();
+
+          if (updateError) {
+            console.error('Error updating staker:', updateError);
+            throw new Error(`Failed to update staker: ${updateError.message}`);
+          }
+
+          if (!updateData || updateData.length === 0) {
+            retryCount++;
+            console.log(`Version conflict detected, retry ${retryCount}/${maxRetries}`);
+            await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
+            continue;
+          }
+        } else {
+          const { error: insertError } = await supabaseClient
+            .from('stakers')
+            .insert({ 
+              wallet_address: walletAddress,
+              staked_amount: newStakedAmount,
+              version: 1
+            });
+
+          if (insertError) {
+            if (insertError.code === '23505') {
+              retryCount++;
+              console.log(`Duplicate key detected, retry ${retryCount}/${maxRetries}`);
+              await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
+              continue;
+            }
+            console.error('Error inserting staker:', insertError);
+            throw new Error(`Failed to insert staker: ${insertError.message}`);
+          }
+        }
+
+        success = true;
+      } catch (error) {
+        if (retryCount >= maxRetries - 1) {
+          throw error;
+        }
+        retryCount++;
+        await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
+      }
     }
 
-    console.log('New staked amount:', newStakedAmount);
-
-    if (existingStaker) {
-      const { error: updateError } = await supabaseClient
-        .from('stakers')
-        .update({ 
-          staked_amount: newStakedAmount,
-          last_updated: new Date().toISOString()
-        })
-        .eq('wallet_address', walletAddress);
-
-      if (updateError) {
-        console.error('Error updating staker:', updateError);
-        throw new Error(`Failed to update staker: ${updateError.message}`);
-      }
-    } else {
-      const { error: insertError } = await supabaseClient
-        .from('stakers')
-        .insert({ 
-          wallet_address: walletAddress,
-          staked_amount: newStakedAmount
-        });
-
-      if (insertError) {
-        console.error('Error inserting staker:', insertError);
-        throw new Error(`Failed to insert staker: ${insertError.message}`);
-      }
+    if (!success) {
+      throw new Error('Failed to update staker after multiple retries due to concurrent modifications');
     }
 
     const { error: txError } = await supabaseClient
@@ -105,7 +139,6 @@ Deno.serve(async (req) => {
       throw new Error(`Failed to insert transaction: ${txError.message}`);
     }
 
-    // Recalculate platform stats
     const { data: allStakers, error: statsError } = await supabaseClient
       .from('stakers')
       .select('staked_amount');

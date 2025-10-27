@@ -27,68 +27,92 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_KEY') ?? ''
     );
 
-    // Verify user has enough staked
-    const { data: staker, error: stakerError } = await supabaseClient
-      .from('stakers')
-      .select('staked_amount')
-      .eq('wallet_address', walletAddress)
-      .single();
+    const maxRetries = 3;
+    let retryCount = 0;
+    let success = false;
+    let newStakedAmount = 0;
+    let signature = '';
 
-    if (stakerError || !staker) {
-      throw new Error('Staker not found');
+    while (retryCount < maxRetries && !success) {
+      const { data: staker, error: stakerError } = await supabaseClient
+        .from('stakers')
+        .select('*')
+        .eq('wallet_address', walletAddress)
+        .single();
+
+      if (stakerError || !staker) {
+        throw new Error('Staker not found');
+      }
+
+      const requestedAmount = parseFloat(amount);
+      if (requestedAmount > staker.staked_amount) {
+        throw new Error(`Insufficient staked balance. You have ${staker.staked_amount} AURACLE staked.`);
+      }
+
+      const currentVersion = staker.version || 1;
+
+      const vaultPrivateKey = Deno.env.get('VAULT_PRIVATE_KEY');
+      if (!vaultPrivateKey) {
+        throw new Error('Vault private key not configured');
+      }
+
+      const connection = new Connection(MAINNET_RPC, 'confirmed');
+      const vaultKeypair = Keypair.fromSecretKey(
+        new Uint8Array(JSON.parse(vaultPrivateKey))
+      );
+
+      const transaction = Transaction.from(
+        Buffer.from(serializedTransaction, 'base64')
+      );
+
+      transaction.partialSign(vaultKeypair);
+
+      signature = await connection.sendRawTransaction(transaction.serialize());
+      await connection.confirmTransaction(signature, 'confirmed');
+
+      newStakedAmount = staker.staked_amount - requestedAmount;
+
+      const { data: updateData, error: updateError } = await supabaseClient
+        .from('stakers')
+        .update({ 
+          staked_amount: newStakedAmount,
+          last_updated: new Date().toISOString(),
+          version: currentVersion + 1
+        })
+        .eq('wallet_address', walletAddress)
+        .eq('version', currentVersion)
+        .select();
+
+      if (updateError) {
+        console.error('Error updating staker:', updateError);
+        throw new Error(`Failed to update staker: ${updateError.message}`);
+      }
+
+      if (!updateData || updateData.length === 0) {
+        retryCount++;
+        console.log(`Version conflict detected, retry ${retryCount}/${maxRetries}`);
+        await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
+        continue;
+      }
+
+      success = true;
     }
 
-    const requestedAmount = parseFloat(amount);
-    if (requestedAmount > staker.staked_amount) {
-      throw new Error(`Insufficient staked balance. You have ${staker.staked_amount} AURACLE staked.`);
+    if (!success) {
+      throw new Error('Failed to update staker after multiple retries. Transaction may have succeeded but database update failed. Signature: ' + signature);
     }
-
-    // Get vault keypair from environment
-    const vaultPrivateKey = Deno.env.get('VAULT_PRIVATE_KEY');
-    if (!vaultPrivateKey) {
-      throw new Error('Vault private key not configured');
-    }
-
-    const connection = new Connection(MAINNET_RPC, 'confirmed');
-    const vaultKeypair = Keypair.fromSecretKey(
-      new Uint8Array(JSON.parse(vaultPrivateKey))
-    );
-
-    // Deserialize and sign the transaction
-    const transaction = Transaction.from(
-      Buffer.from(serializedTransaction, 'base64')
-    );
-
-    // Sign with vault keypair
-    transaction.partialSign(vaultKeypair);
-
-    // Send transaction
-    const signature = await connection.sendRawTransaction(transaction.serialize());
-    await connection.confirmTransaction(signature, 'confirmed');
-
-    // Update database
-    const newStakedAmount = staker.staked_amount - requestedAmount;
-
-    await supabaseClient
-      .from('stakers')
-      .update({ 
-        staked_amount: newStakedAmount,
-        last_updated: new Date().toISOString()
-      })
-      .eq('wallet_address', walletAddress);
 
     await supabaseClient
       .from('transactions')
       .insert({
         wallet_address: walletAddress,
         type: 'unstake',
-        amount: requestedAmount,
+        amount: parseFloat(amount),
         token: 'AURACLE',
         tx_signature: signature,
         status: 'completed'
       });
 
-    // Update platform stats
     const { data: allStakers } = await supabaseClient
       .from('stakers')
       .select('staked_amount');
