@@ -18,17 +18,17 @@ export default function RewardsCard({
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [liveRewards, setLiveRewards] = useState(pendingRewards);
 
-  // Calculate rewards per second
-  const dailyRewards = parseFloat(estimatedDailyRewards);
-  const rewardsPerSecond = dailyRewards / (24 * 60 * 60);
+  // Calculate rewards per second with safety checks
+  const dailyRewards = parseFloat(estimatedDailyRewards || "0");
+  const rewardsPerSecond = isNaN(dailyRewards) ? 0 : dailyRewards / (24 * 60 * 60);
 
   // Update live rewards every second
   useEffect(() => {
-    setLiveRewards(pendingRewards);
+    setLiveRewards(pendingRewards || 0);
     
     if (rewardsPerSecond > 0) {
       const interval = setInterval(() => {
-        setLiveRewards(prev => prev + rewardsPerSecond);
+        setLiveRewards(prev => (prev || 0) + rewardsPerSecond);
       }, 1000);
 
       return () => clearInterval(interval);
@@ -44,6 +44,9 @@ export default function RewardsCard({
     }
   };
 
+  // Safe display value
+  const displayRewards = isNaN(liveRewards) ? 0 : liveRewards;
+
   return (
     <Card className="bg-gradient-to-br from-slate-900 to-slate-800 border-slate-700">
       <CardHeader>
@@ -52,7 +55,7 @@ export default function RewardsCard({
             <TrendingUp className="h-5 w-5 text-green-400" />
             SOL Rewards
           </CardTitle>
-          {liveRewards > 0 && (
+          {displayRewards > 0 && (
             <Badge className="bg-green-600 animate-pulse">
               Live
             </Badge>
@@ -67,7 +70,7 @@ export default function RewardsCard({
           <div className="flex items-center justify-center gap-2 mb-2">
             <Coins className="h-6 w-6 text-green-400" />
             <span className="text-4xl font-bold text-white tabular-nums">
-              {liveRewards.toFixed(6)}
+              {displayRewards.toFixed(6)}
             </span>
             <span className="text-xl text-slate-400">SOL</span>
           </div>
@@ -81,7 +84,7 @@ export default function RewardsCard({
 
         <Button 
           onClick={handleWithdraw}
-          disabled={isWithdrawing || liveRewards <= 0}
+          disabled={isWithdrawing || displayRewards <= 0}
           className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold"
         >
           {isWithdrawing ? (
@@ -97,7 +100,7 @@ export default function RewardsCard({
           )}
         </Button>
 
-        {liveRewards <= 0 && (
+        {displayRewards <= 0 && (
           <p className="text-xs text-center text-slate-400">
             No rewards available yet. Keep staking to earn SOL!
           </p>
