@@ -17,6 +17,9 @@ import { VAULT_WALLET, AURACLE_MINT } from './supabase';
 
 const MAINNET_RPC = 'https://mainnet.helius-rpc.com/?api-key=e9ab9721-93fa-4533-b148-7e240bd38192';
 
+// AURACLE token has 9 decimals
+const AURACLE_DECIMALS = 9;
+
 export const connection = new Connection(MAINNET_RPC, 'confirmed');
 
 export async function createStakeTransaction(
@@ -39,10 +42,10 @@ export async function createStakeTransaction(
   // Check if user has token account and balance
   try {
     const accountInfo = await getAccount(connection, fromTokenAccount);
-    const balance = Number(accountInfo.amount) / Math.pow(10, 9);
+    const balance = Number(accountInfo.amount) / Math.pow(10, AURACLE_DECIMALS);
     
     if (balance < amount) {
-      throw new Error(`Insufficient balance. You have ${balance.toFixed(2)} AURACLE but tried to stake ${amount}`);
+      throw new Error(`Insufficient balance. You have ${balance.toLocaleString()} AURACLE but tried to stake ${amount}`);
     }
   } catch (error: any) {
     if (error.message.includes('Insufficient balance')) {
@@ -73,7 +76,7 @@ export async function createStakeTransaction(
       fromTokenAccount,
       toTokenAccount,
       walletPublicKey,
-      BigInt(Math.floor(amount * Math.pow(10, 9))),
+      BigInt(Math.floor(amount * Math.pow(10, AURACLE_DECIMALS))),
       [],
       TOKEN_PROGRAM_ID
     )
@@ -130,7 +133,7 @@ export async function createUnstakeTransaction(
       fromTokenAccount,
       toTokenAccount,
       vaultPublicKey,
-      BigInt(Math.floor(amount * Math.pow(10, 9))),
+      BigInt(Math.floor(amount * Math.pow(10, AURACLE_DECIMALS))),
       [],
       TOKEN_PROGRAM_ID
     )
@@ -154,8 +157,9 @@ export async function getTokenBalance(walletPublicKey: PublicKey): Promise<numbe
       walletPublicKey
     );
     
-    const balance = await connection.getTokenAccountBalance(tokenAccount);
-    return parseFloat(balance.value.uiAmount?.toString() || '0');
+    const accountInfo = await getAccount(connection, tokenAccount);
+    // Use the actual raw amount and divide by the correct decimals
+    return Number(accountInfo.amount) / Math.pow(10, AURACLE_DECIMALS);
   } catch (error) {
     console.error('Error fetching token balance:', error);
     return 0;
