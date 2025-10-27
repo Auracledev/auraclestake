@@ -311,7 +311,7 @@ export default function AuracleDashboard() {
               />
               <StatCard
                 title="Your Pending Rewards"
-                value={`${(userData.pendingRewards || 0).toFixed(4)} SOL`}
+                value={`${(userData.pendingRewards || 0).toFixed(6)} SOL`}
                 subtitle="Available to withdraw"
               />
             </div>
@@ -346,6 +346,7 @@ export default function AuracleDashboard() {
               <div className="lg:col-span-2">
                 <RewardsCard 
                   pendingRewards={userData.pendingRewards}
+                  estimatedDailyRewards={userData.estimatedDailyRewards}
                   onWithdraw={handleWithdrawRewards}
                 />
               </div>
