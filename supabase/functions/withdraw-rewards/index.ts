@@ -19,8 +19,11 @@ Deno.serve(async (req) => {
     (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_KEY')) ?? ''
   );
 
+  let walletAddress = '';
+
   try {
-    const { walletAddress } = await req.json();
+    const body = await req.json();
+    walletAddress = body.walletAddress;
 
     if (!walletAddress) {
       throw new Error('Wallet address is required');
@@ -148,11 +151,24 @@ Deno.serve(async (req) => {
         throw new Error('Vault private key not configured');
       }
 
-      const vaultKeypair = Keypair.fromSecretKey(
-        new Uint8Array(JSON.parse(vaultPrivateKey))
-      );
+      console.log('Creating vault keypair...');
+      let vaultKeypair;
+      try {
+        vaultKeypair = Keypair.fromSecretKey(
+          new Uint8Array(JSON.parse(vaultPrivateKey))
+        );
+        console.log('Vault keypair created. Public key:', vaultKeypair.publicKey.toString());
+        console.log('Expected vault address:', VAULT_WALLET);
+        
+        if (vaultKeypair.publicKey.toString() !== VAULT_WALLET) {
+          throw new Error(`Vault keypair mismatch! Generated: ${vaultKeypair.publicKey.toString()}, Expected: ${VAULT_WALLET}`);
+        }
+      } catch (err) {
+        throw new Error(`Failed to create vault keypair: ${err.message}`);
+      }
 
       const userPublicKey = new PublicKey(walletAddress);
+      console.log('Sending', totalRewards, 'SOL to:', walletAddress);
 
       const transaction = new Transaction().add(
         SystemProgram.transfer({

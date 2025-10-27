@@ -185,51 +185,43 @@ Deno.serve(async (req) => {
     transaction.feePayer = vaultKeypair.publicKey;
 
     console.log('Signing and sending transaction...');
-    const txSignature = await sendAndConfirmTransaction(
-      connection,
-      transaction,
-      [vaultKeypair],
-      { commitment: 'confirmed' }
+    
+    // Sign the transaction
+    transaction.sign(vaultKeypair);
+    
+    // Send transaction without WebSocket confirmation
+    const txSignature = await connection.sendRawTransaction(
+      transaction.serialize(),
+      {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed'
+      }
     );
 
-    console.log('Transaction confirmed:', txSignature);
+    console.log('Transaction sent:', txSignature);
 
     // Update database
     console.log('Updating staker balance from', stakerData.staked_amount, 'to', stakerData.staked_amount - amount);
     const newAmount = stakerData.staked_amount - amount;
     
-    if (newAmount === 0) {
-      console.log('Deleting staker record (balance is 0)');
-      const { error: deleteError } = await supabase
-        .from('stakers')
-        .delete()
-        .eq('wallet_address', walletAddress);
-      
-      if (deleteError) {
-        console.error('Error deleting staker:', deleteError);
-        console.error('Delete error details:', JSON.stringify(deleteError));
-        throw new Error(`Failed to delete staker: ${deleteError.message}`);
-      }
-      console.log('Staker deleted successfully');
-    } else {
-      console.log('Updating staker balance to:', newAmount);
-      const { data: updateData, error: updateError } = await supabase
-        .from('stakers')
-        .update({ 
-          staked_amount: newAmount, 
-          last_updated: new Date().toISOString(),
-          version: stakerData.version + 1 
-        })
-        .eq('wallet_address', walletAddress)
-        .select();
-      
-      if (updateError) {
-        console.error('Error updating staker:', updateError);
-        console.error('Update error details:', JSON.stringify(updateError));
-        throw new Error(`Failed to update staker: ${updateError.message}`);
-      }
-      console.log('Staker updated successfully:', updateData);
+    // Always update, never delete - preserve pending rewards
+    console.log('Updating staker balance to:', newAmount);
+    const { data: updateData, error: updateError } = await supabase
+      .from('stakers')
+      .update({ 
+        staked_amount: newAmount, 
+        last_updated: new Date().toISOString(),
+        version: stakerData.version + 1 
+      })
+      .eq('wallet_address', walletAddress)
+      .select();
+    
+    if (updateError) {
+      console.error('Error updating staker:', updateError);
+      console.error('Update error details:', JSON.stringify(updateError));
+      throw new Error(`Failed to update staker: ${updateError.message}`);
     }
+    console.log('Staker updated successfully:', updateData);
 
     // Record transaction
     console.log('Recording transaction...');

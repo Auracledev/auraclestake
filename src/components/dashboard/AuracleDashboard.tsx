@@ -157,32 +157,48 @@ export default function AuracleDashboard() {
     }
   };
 
-  const handleWithdrawRewards = async () => {
+  const handleWithdraw = async () => {
     if (!publicKey) return;
-
+    
     try {
-      const { data, error } = await supabase.functions.invoke('supabase-functions-withdraw-rewards', {
-        body: { walletAddress: publicKey.toString() },
-        headers: {
-          'Content-Type': 'application/json',
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/supabase-functions-withdraw-rewards`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ walletAddress: publicKey.toString() }),
         }
-      });
+      );
 
-      if (error) throw error;
+      const responseText = await response.text();
+      console.log('Withdraw response:', responseText);
+      console.log('Response status:', response.status);
 
-      toast({
-        title: "Withdrawal successful!",
-        description: `Successfully withdrew ${data.amount.toFixed(4)} SOL`,
-      });
+      if (!response.ok) {
+        console.error('Error response:', responseText);
+        alert(`Withdrawal failed (${response.status}): ${responseText}`);
+        return;
+      }
 
-      fetchUserData();
-    } catch (error: any) {
-      console.error('Withdraw error:', error);
-      toast({
-        title: "Withdrawal failed",
-        description: error.message || "Failed to withdraw rewards",
-        variant: "destructive"
-      });
+      const data = JSON.parse(responseText);
+      
+      if (data?.error) {
+        console.error('Withdraw error:', data.error);
+        alert(`Withdrawal failed: ${data.error}`);
+        return;
+      }
+
+      if (data?.success) {
+        alert(`Successfully withdrew ${data.amount.toFixed(6)} SOL!\nTransaction: ${data.signature}`);
+        await fetchUserData();
+        await fetchPlatformStats();
+      }
+    } catch (err) {
+      console.error('Withdraw error:', err);
+      alert(`Withdrawal failed: ${err.message || 'Unknown error'}`);
     }
   };
 
@@ -266,7 +282,7 @@ export default function AuracleDashboard() {
                 <RewardsCard 
                   pendingRewards={userData.pendingRewards}
                   estimatedDailyRewards={userData.estimatedDailyRewards}
-                  onWithdraw={handleWithdrawRewards}
+                  onWithdraw={handleWithdraw}
                 />
                 <TransactionHistory transactions={userData.transactions.map(tx => ({
                   id: tx.id,
@@ -354,7 +370,7 @@ export default function AuracleDashboard() {
                 <RewardsCard 
                   pendingRewards={userData.pendingRewards}
                   estimatedDailyRewards={userData.estimatedDailyRewards}
-                  onWithdraw={handleWithdrawRewards}
+                  onWithdraw={handleWithdraw}
                 />
               </div>
               <div>
