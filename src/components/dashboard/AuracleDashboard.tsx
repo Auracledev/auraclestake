@@ -113,33 +113,41 @@ export default function AuracleDashboard() {
     if (!publicKey) return;
 
     try {
-      const response = await supabase.functions.invoke('supabase-functions-get-user-data', {
-        body: { walletAddress: publicKey.toString() },
-        headers: {
-          'Content-Type': 'application/json',
+      // Use fetch directly to get the full error response
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/supabase-functions-get-user-data`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ walletAddress: publicKey.toString() }),
         }
-      });
+      );
 
-      console.log('Full response:', JSON.stringify(response, null, 2));
-      console.log('Response data:', response.data);
-      console.log('Response error:', response.error);
+      const responseText = await response.text();
+      console.log('Raw response:', responseText);
+      console.log('Response status:', response.status);
 
-      if (response.error) {
-        console.error('Error fetching user data:', response.error);
-        throw response.error;
+      if (!response.ok) {
+        console.error('Error response:', responseText);
+        throw new Error(`HTTP ${response.status}: ${responseText}`);
+      }
+
+      const data = JSON.parse(responseText);
+      
+      if (data?.error) {
+        console.error('Edge function returned error:', data.error);
+        throw new Error(data.error);
       }
       
-      if (response.data?.error) {
-        console.error('Edge function returned error:', response.data.error);
-        throw new Error(response.data.error);
-      }
-      
-      if (response.data) {
+      if (data) {
         setUserData({
-          staked_amount: response.data.staker?.staked_amount || 0,
-          estimatedDailyRewards: response.data.estimatedDailyRewards || '0',
-          pendingRewards: response.data.pendingRewards || 0,
-          transactions: response.data.transactions || [],
+          staked_amount: data.staker?.staked_amount || 0,
+          estimatedDailyRewards: data.estimatedDailyRewards || '0',
+          pendingRewards: data.pendingRewards || 0,
+          transactions: data.transactions || [],
         });
       }
     } catch (error) {
