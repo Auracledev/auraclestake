@@ -11,10 +11,13 @@ Deno.serve(async (req) => {
 
   try {
     console.log('Process unstake request received');
+    console.log('Request headers:', Object.fromEntries(req.headers.entries()));
     
     // Read the raw body first for debugging
     const bodyText = await req.text();
     console.log('Raw request body:', bodyText);
+    console.log('Body length:', bodyText.length);
+    console.log('First 50 chars:', bodyText.substring(0, 50));
     
     // Parse the JSON
     let body;
@@ -22,8 +25,12 @@ Deno.serve(async (req) => {
       body = JSON.parse(bodyText);
     } catch (parseError) {
       console.error('JSON parse error:', parseError);
+      console.error('Failed to parse body:', bodyText);
       return new Response(
-        JSON.stringify({ error: `Failed to parse JSON: ${parseError.message}` }),
+        JSON.stringify({ 
+          error: `Failed to parse JSON: ${parseError.message}`,
+          receivedBody: bodyText.substring(0, 100)
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

@@ -187,11 +187,12 @@ export default function StakeActions({
       // Prepare payload - convert amount to string to avoid any number formatting issues
       const payload = {
         walletAddress: publicKey.toString(),
-        amount: amount.toFixed(9), // Use toFixed to avoid scientific notation
+        amount: String(amount), // Convert to string without toFixed to preserve exact value
         serializedTransaction: serializedTx
       };
       
       console.log('Sending unstake request:', payload);
+      console.log('Amount type:', typeof payload.amount, 'Value:', payload.amount);
       console.log('Payload JSON:', JSON.stringify(payload));
       
       // Send UNSIGNED transaction to backend
