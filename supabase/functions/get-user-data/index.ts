@@ -10,61 +10,75 @@ Deno.serve(async (req) => {
     const { walletAddress } = await req.json();
 
     if (!walletAddress) {
-      throw new Error('Wallet address is required');
+      return new Response(
+        JSON.stringify({ error: 'Missing walletAddress parameter' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_KEY') ?? ''
     );
 
-    const { data: stakerData, error: stakerError } = await supabaseClient
+    // Fetch staker data
+    const { data: staker, error: stakerError } = await supabaseClient
       .from('stakers')
       .select('*')
       .eq('wallet_address', walletAddress)
       .maybeSingle();
 
     if (stakerError) {
-      console.error('Error fetching staker:', stakerError);
+      console.error('Staker query error:', stakerError);
+      return new Response(
+        JSON.stringify({ error: `Database error: ${stakerError.message}` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
+    // Fetch transactions
     const { data: transactions, error: txError } = await supabaseClient
       .from('transactions')
       .select('*')
       .eq('wallet_address', walletAddress)
       .order('created_at', { ascending: false })
-      .limit(20);
+      .limit(10);
 
     if (txError) {
-      console.error('Error fetching transactions:', txError);
+      console.error('Transactions query error:', txError);
+      return new Response(
+        JSON.stringify({ error: `Database error: ${txError.message}` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const { data: stats } = await supabaseClient
+    // Calculate estimated daily rewards
+    const { data: platformStats } = await supabaseClient
       .from('platform_stats')
       .select('*')
       .limit(1)
       .maybeSingle();
 
     let estimatedDailyRewards = '0';
-    if (stakerData && stats && stats.total_staked > 0) {
-      const userShare = parseFloat(stakerData.staked_amount) / parseFloat(stats.total_staked);
-      const dailyReward = (parseFloat(stats.weekly_reward_pool) / 7) * userShare;
-      estimatedDailyRewards = dailyReward.toFixed(4);
+    if (staker && platformStats && platformStats.total_staked > 0) {
+      const dailyPool = platformStats.weekly_reward_pool / 7;
+      const userShare = staker.staked_amount / platformStats.total_staked;
+      estimatedDailyRewards = (dailyPool * userShare).toFixed(6);
     }
 
     return new Response(
-      JSON.stringify({ 
-        staker: stakerData || null,
-        transactions: transactions || [],
+      JSON.stringify({
+        staker,
+        transactions,
         estimatedDailyRewards,
-        pendingRewards: stakerData?.pending_rewards || 0
+        pendingRewards: staker?.pending_rewards || 0
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error('get-user-data error:', error);
+    console.error('Get user data error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: `Server error: ${error.message}` }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

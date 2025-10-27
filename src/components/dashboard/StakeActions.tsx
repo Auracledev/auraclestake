@@ -116,19 +116,26 @@ export default function StakeActions({
 
       if (recordError) {
         console.error('Failed to record stake:', recordError);
+        console.error('Record error details:', JSON.stringify(recordError));
         toast({
           title: "Warning",
           description: "Stake succeeded but failed to record in database. Please refresh.",
           variant: "destructive"
         });
+      } else if (recordData?.error) {
+        console.error('Edge function returned error:', recordData.error);
+        toast({
+          title: "Warning",
+          description: `Stake succeeded but: ${recordData.error}`,
+          variant: "destructive"
+        });
       } else {
         console.log('Stake recorded successfully:', recordData);
+        toast({
+          title: "Stake successful!",
+          description: `Successfully staked ${amount} AURACLE`,
+        });
       }
-
-      toast({
-        title: "Stake successful!",
-        description: `Successfully staked ${amount} AURACLE`,
-      });
 
       setStakeAmount("");
       onStake(amount);

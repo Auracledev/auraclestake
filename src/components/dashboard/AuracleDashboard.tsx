@@ -120,7 +120,17 @@ export default function AuracleDashboard() {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching user data:', error);
+        console.error('Error details:', JSON.stringify(error));
+        throw error;
+      }
+      
+      if (data?.error) {
+        console.error('Edge function returned error:', data.error);
+        throw new Error(data.error);
+      }
+      
       if (data) {
         setUserData({
           staked_amount: data.staker?.staked_amount || 0,
