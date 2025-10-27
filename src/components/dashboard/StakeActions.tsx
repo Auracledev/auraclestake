@@ -155,10 +155,19 @@ export default function StakeActions({
   };
 
   const handleUnstake = async () => {
-    if (!publicKey || !signMessage) {
+    if (!publicKey) {
       toast({
         title: "Wallet not connected",
         description: "Please connect your wallet to unstake",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!signMessage) {
+      toast({
+        title: "Wallet doesn't support signing",
+        description: "Your wallet doesn't support message signing. Please use a different wallet.",
         variant: "destructive"
       });
       return;
@@ -179,6 +188,8 @@ export default function StakeActions({
       // Create message for user to sign
       const message = `Unstake ${amount} AURACLE from ${publicKey.toString()}`;
       const encodedMessage = new TextEncoder().encode(message);
+      
+      console.log('Requesting signature from wallet...');
       
       // User signs the message to authorize unstake
       const signature = await signMessage(encodedMessage);
@@ -217,11 +228,21 @@ export default function StakeActions({
       fetchBalance();
     } catch (error: any) {
       console.error('Unstake error:', error);
-      toast({
-        title: "Unstake failed",
-        description: error.message || "Failed to unstake tokens",
-        variant: "destructive"
-      });
+      
+      // Check if user rejected the signature
+      if (error.message?.includes('User rejected') || error.code === 4001) {
+        toast({
+          title: "Signature rejected",
+          description: "You must sign the message to authorize unstaking",
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Unstake failed",
+          description: error.message || "Failed to unstake tokens",
+          variant: "destructive"
+        });
+      }
     } finally {
       setIsUnstaking(false);
     }

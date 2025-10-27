@@ -17,9 +17,10 @@ Deno.serve(async (req) => {
   try {
     const { walletAddress, amount, message, signature } = await req.json();
     
-    console.log('Unstake request:', { walletAddress, amount });
+    console.log('Unstake request:', { walletAddress, amount, hasMessage: !!message, hasSignature: !!signature });
 
     if (!walletAddress || !amount || amount <= 0 || !message || !signature) {
+      console.error('Missing parameters:', { walletAddress: !!walletAddress, amount, message: !!message, signature: !!signature });
       return new Response(
         JSON.stringify({ error: 'Invalid request parameters' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -28,9 +29,13 @@ Deno.serve(async (req) => {
 
     // Verify message signature
     try {
+      console.log('Verifying signature...');
       const publicKey = new PublicKey(walletAddress);
       const messageBytes = new TextEncoder().encode(message);
       const signatureBytes = Uint8Array.from(atob(signature), c => c.charCodeAt(0));
+      
+      console.log('Message:', message);
+      console.log('Signature length:', signatureBytes.length);
       
       const verified = nacl.sign.detached.verify(
         messageBytes,
@@ -39,14 +44,16 @@ Deno.serve(async (req) => {
       );
 
       if (!verified) {
+        console.error('Signature verification failed - signature does not match');
         throw new Error('Invalid signature');
       }
 
       console.log('Signature verified successfully');
     } catch (verifyError) {
       console.error('Signature verification failed:', verifyError);
+      console.error('Error details:', verifyError.message, verifyError.stack);
       return new Response(
-        JSON.stringify({ error: 'Invalid wallet signature' }),
+        JSON.stringify({ error: `Invalid wallet signature: ${verifyError.message}` }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
