@@ -102,7 +102,7 @@ export default function StakeActions({
       }
 
       // Record stake in database
-      await supabase.functions.invoke('supabase-functions-record-stake', {
+      const { data: recordData, error: recordError } = await supabase.functions.invoke('supabase-functions-record-stake', {
         body: {
           walletAddress: publicKey.toString(),
           amount,
@@ -113,6 +113,17 @@ export default function StakeActions({
           'Content-Type': 'application/json',
         }
       });
+
+      if (recordError) {
+        console.error('Failed to record stake:', recordError);
+        toast({
+          title: "Warning",
+          description: "Stake succeeded but failed to record in database. Please refresh.",
+          variant: "destructive"
+        });
+      } else {
+        console.log('Stake recorded successfully:', recordData);
+      }
 
       toast({
         title: "Stake successful!",
