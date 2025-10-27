@@ -36,12 +36,19 @@ export async function createStakeTransaction(
     vaultPublicKey
   );
 
-  // Verify accounts exist before creating transaction
+  // Check if user has token account and balance
   try {
-    await getAccount(connection, fromTokenAccount);
-    await getAccount(connection, toTokenAccount);
-  } catch (error) {
-    throw new Error('Token accounts not found. Please ensure you have AURACLE tokens.');
+    const accountInfo = await getAccount(connection, fromTokenAccount);
+    const balance = Number(accountInfo.amount) / Math.pow(10, 9);
+    
+    if (balance < amount) {
+      throw new Error(`Insufficient balance. You have ${balance.toFixed(2)} AURACLE but tried to stake ${amount}`);
+    }
+  } catch (error: any) {
+    if (error.message.includes('Insufficient balance')) {
+      throw error;
+    }
+    throw new Error('Token account not found. Please ensure you have AURACLE tokens in your wallet.');
   }
 
   const instructions: TransactionInstruction[] = [];

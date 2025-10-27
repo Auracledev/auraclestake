@@ -96,6 +96,9 @@ export default function StakeActions({
           amount,
           type: 'stake',
           txSignature: signature
+        },
+        headers: {
+          'Content-Type': 'application/json',
         }
       });
 
@@ -151,6 +154,9 @@ export default function StakeActions({
           walletAddress: publicKey.toString(),
           amount,
           serializedTransaction: Buffer.from(signedTx.serialize()).toString('base64')
+        },
+        headers: {
+          'Content-Type': 'application/json',
         }
       });
 

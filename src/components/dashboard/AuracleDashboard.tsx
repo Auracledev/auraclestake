@@ -84,7 +84,11 @@ export default function AuracleDashboard() {
 
   const fetchPlatformStats = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('supabase-functions-get-platform-stats');
+      const { data, error } = await supabase.functions.invoke('supabase-functions-get-platform-stats', {
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
       
       if (error) throw error;
       if (data?.stats) {
@@ -102,7 +106,10 @@ export default function AuracleDashboard() {
 
     try {
       const { data, error } = await supabase.functions.invoke('supabase-functions-get-user-data', {
-        body: { walletAddress: publicKey.toString() }
+        body: { walletAddress: publicKey.toString() },
+        headers: {
+          'Content-Type': 'application/json',
+        }
       });
 
       if (error) throw error;
@@ -124,7 +131,10 @@ export default function AuracleDashboard() {
 
     try {
       const { data, error } = await supabase.functions.invoke('supabase-functions-withdraw-rewards', {
-        body: { walletAddress: publicKey.toString() }
+        body: { walletAddress: publicKey.toString() },
+        headers: {
+          'Content-Type': 'application/json',
+        }
       });
 
       if (error) throw error;
@@ -279,7 +289,10 @@ export default function AuracleDashboard() {
               <ManualPayout onTriggerPayout={async () => {
                 try {
                   const { data, error } = await supabase.functions.invoke('supabase-functions-calculate-rewards', {
-                    body: { adminWallet: publicKey?.toString() }
+                    body: { adminWallet: publicKey?.toString() },
+                    headers: {
+                      'Content-Type': 'application/json',
+                    }
                   });
                   if (error) throw error;
                   toast({
