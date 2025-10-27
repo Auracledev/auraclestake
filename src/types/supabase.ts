@@ -116,6 +116,7 @@ export type Database = {
           id: string
           last_updated: string | null
           pending_rewards: number
+          stake_locked_until: string | null
           staked_amount: number
           unstake_locked_until: string | null
           version: number
@@ -126,6 +127,7 @@ export type Database = {
           id?: string
           last_updated?: string | null
           pending_rewards?: number
+          stake_locked_until?: string | null
           staked_amount?: number
           unstake_locked_until?: string | null
           version?: number
@@ -136,6 +138,7 @@ export type Database = {
           id?: string
           last_updated?: string | null
           pending_rewards?: number
+          stake_locked_until?: string | null
           staked_amount?: number
           unstake_locked_until?: string | null
           version?: number
@@ -226,7 +229,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      set_stake_lock: {
+        Args: { p_lock_until: string; p_wallet_address: string }
+        Returns: boolean
+      }
+      set_unstake_lock: {
+        Args: { p_lock_until: string; p_wallet_address: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

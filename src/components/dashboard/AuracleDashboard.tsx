@@ -414,15 +414,10 @@ export default function AuracleDashboard() {
       {/* Footer */}
       <footer className="border-t border-slate-800 bg-slate-900/50 mt-16">
         <div className="container mx-auto px-4 py-6">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center justify-center">
             <p className="text-slate-400 text-sm">
-              © 2024 Auracle Staking. Automated pro-rata SOL rewards distribution.
+              © 2025 Auracle. Automated pro-rata SOL rewards distribution.
             </p>
-            <div className="flex items-center gap-4 text-sm text-slate-400">
-              <a href="#" className="hover:text-purple-400 transition-colors">Documentation</a>
-              <a href="#" className="hover:text-purple-400 transition-colors">Support</a>
-              <a href="#" className="hover:text-purple-400 transition-colors">Terms</a>
-            </div>
           </div>
         </div>
       </footer>

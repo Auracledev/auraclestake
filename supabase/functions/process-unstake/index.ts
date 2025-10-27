@@ -1,15 +1,16 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
-import { Connection, Transaction, Keypair, PublicKey, sendAndConfirmTransaction } from 'https://esm.sh/@solana/web3.js@1.87.6';
+import { Connection, Transaction, Keypair, PublicKey } from 'https://esm.sh/@solana/web3.js@1.87.6';
 import { getAssociatedTokenAddress, createTransferInstruction, createAssociatedTokenAccountInstruction, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from 'https://esm.sh/@solana/spl-token@0.3.9';
 import { corsHeaders } from '@shared/cors.ts';
 import { MAX_UNSTAKE_AMOUNT, SIGNATURE_EXPIRY_MS } from '@shared/constants.ts';
+import { checkTransactionDuplicate } from '@shared/transaction-dedup.ts';
 import nacl from 'https://esm.sh/tweetnacl@1.0.3';
 import bs58 from 'https://esm.sh/bs58@5.0.0';
 
 const SOLANA_RPC_URL = 'https://mainnet.helius-rpc.com/?api-key=e9ab9721-93fa-4533-b148-7e240bd38192';
 const AURACLE_MINT = '5EoNPSEMcFMuzz3Fr7ho3TiweifUumLaBXMQpVZRpump';
 const AURACLE_DECIMALS = 6;
-const UNSTAKE_LOCK_DURATION = 30; // seconds
+const UNSTAKE_LOCK_DURATION = 120; // Increased to 120 seconds
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -17,9 +18,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { walletAddress, amount, message, signature, timestamp } = await req.json();
+    const { walletAddress, amount, message, signature, timestamp, txSignature } = await req.json();
     
-    console.log('Unstake request:', { walletAddress, amount, hasMessage: !!message, hasSignature: !!signature, timestamp });
+    console.log('Unstake request:', { walletAddress, amount, hasMessage: !!message, hasSignature: !!signature, timestamp, txSignature });
 
     if (!walletAddress || !amount || amount <= 0 || !message || !signature) {
       console.error('Missing parameters:', { walletAddress: !!walletAddress, amount, message: !!message, signature: !!signature });
@@ -83,10 +84,10 @@ Deno.serve(async (req) => {
     }
 
     // Initialize Supabase
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SERVICE_ROLE_KEY');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? Deno.env.get('VITE_SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_KEY') ?? Deno.env.get('SUPABASE_ANON_KEY');
     
-    if (!supabaseUrl || !supabaseKey) {
+    if (!supabaseUrl || !supabaseServiceKey) {
       console.error('Missing Supabase config');
       return new Response(
         JSON.stringify({ error: 'Server configuration error' }),
@@ -94,48 +95,35 @@ Deno.serve(async (req) => {
       );
     }
     
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Check for existing unstake lock
-    const { data: existingLock } = await supabase
-      .from('stakers')
-      .select('unstake_locked_until')
-      .eq('wallet_address', walletAddress)
-      .single();
-
-    if (existingLock?.unstake_locked_until) {
-      const lockExpiry = new Date(existingLock.unstake_locked_until);
-      if (lockExpiry > new Date()) {
-        console.log('Unstake already in progress for wallet:', walletAddress);
-        return new Response(
-          JSON.stringify({ error: 'Unstake already in progress. Please wait a moment and try again.' }),
-          { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-
-    // Set unstake lock
+    // ATOMIC LOCK CHECK AND SET - prevents race condition
     const lockUntil = new Date(Date.now() + UNSTAKE_LOCK_DURATION * 1000).toISOString();
-    const { error: lockError } = await supabase
-      .from('stakers')
-      .update({ unstake_locked_until: lockUntil })
-      .eq('wallet_address', walletAddress);
+    
+    // Use database transaction to atomically check and set lock
+    const { data: lockResult, error: lockError } = await supabase.rpc('set_unstake_lock', {
+      p_wallet_address: walletAddress,
+      p_lock_until: lockUntil
+    });
 
-    if (lockError) {
-      console.error('Failed to set unstake lock:', lockError);
+    if (lockError || !lockResult) {
+      console.log('Failed to acquire unstake lock:', lockError?.message || 'Lock already exists');
       return new Response(
-        JSON.stringify({ error: 'Failed to process unstake request' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Unstake already in progress. Please wait and try again.' }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Unstake lock set until:', lockUntil);
+    console.log('Unstake lock acquired until:', lockUntil);
+
+    let transactionSucceeded = false;
+    let solanaSignature = '';
 
     try {
-      // Verify user has enough staked (with version for optimistic locking)
+      // VERIFY BALANCE AFTER LOCK IS SET
       const { data: stakerData, error: stakerError } = await supabase
         .from('stakers')
-        .select('staked_amount, version')
+        .select('staked_amount')
         .eq('wallet_address', walletAddress)
         .single();
 
@@ -146,6 +134,15 @@ Deno.serve(async (req) => {
 
       if (stakerData.staked_amount < amount) {
         throw new Error(`Insufficient staked balance. You have ${stakerData.staked_amount} AURACLE staked.`);
+      }
+
+      // Check for duplicate transaction signature (if provided)
+      if (txSignature) {
+        const dedupResult = await checkTransactionDuplicate(supabase, txSignature);
+        if (dedupResult.isDuplicate) {
+          console.log('Duplicate transaction detected:', txSignature);
+          throw new Error('Transaction already processed');
+        }
       }
 
       // Get vault private key
@@ -202,7 +199,7 @@ Deno.serve(async (req) => {
       if (!toAccountInfo) {
         console.log('Creating associated token account for user...');
         const createAccountIx = createAssociatedTokenAccountInstruction(
-          vaultKeypair.publicKey, // payer
+          vaultKeypair.publicKey,
           toTokenAccount,
           userPublicKey,
           mintPublicKey,
@@ -237,8 +234,8 @@ Deno.serve(async (req) => {
       // Sign the transaction
       transaction.sign(vaultKeypair);
       
-      // Send transaction without WebSocket confirmation
-      const txSignature = await connection.sendRawTransaction(
+      // Send transaction
+      solanaSignature = await connection.sendRawTransaction(
         transaction.serialize(),
         {
           skipPreflight: false,
@@ -246,88 +243,94 @@ Deno.serve(async (req) => {
         }
       );
 
-      console.log('Transaction sent:', txSignature);
+      console.log('Transaction sent:', solanaSignature);
 
-      // Wait for confirmation using polling
-      console.log('Waiting for transaction confirmation...');
-      const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+      // Poll for confirmation
+      console.log('Polling for transaction confirmation...');
+      let confirmed = false;
+      let attempts = 0;
+      const maxAttempts = 30;
       
-      await connection.confirmTransaction({
-        signature: txSignature,
-        blockhash: latestBlockhash.blockhash,
-        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight
-      }, 'confirmed');
+      while (!confirmed && attempts < maxAttempts) {
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        try {
+          const status = await connection.getSignatureStatus(solanaSignature);
+          if (status?.value?.confirmationStatus === 'confirmed' || 
+              status?.value?.confirmationStatus === 'finalized') {
+            confirmed = true;
+            console.log('Transaction confirmed on-chain');
+          }
+        } catch (pollError) {
+          console.log('Poll attempt', attempts, 'failed:', pollError.message);
+        }
+      }
+      
+      if (!confirmed) {
+        throw new Error('Transaction confirmation timeout');
+      }
 
-      console.log('Transaction confirmed on-chain');
+      transactionSucceeded = true;
 
-      // Update database with version check (optimistic locking)
+      // Update database
       console.log('Updating staker balance from', stakerData.staked_amount, 'to', stakerData.staked_amount - amount);
       const newAmount = stakerData.staked_amount - amount;
       
-      console.log('Updating staker balance to:', newAmount);
-      const { data: updateData, error: updateError } = await supabase
+      const { error: updateError } = await supabase
         .from('stakers')
         .update({ 
           staked_amount: newAmount, 
           last_updated: new Date().toISOString(),
-          version: stakerData.version + 1,
-          unstake_locked_until: null // Release lock
+          unstake_locked_until: null
         })
-        .eq('wallet_address', walletAddress)
-        .eq('version', stakerData.version) // Optimistic locking - only update if version matches
-        .select();
+        .eq('wallet_address', walletAddress);
       
       if (updateError) {
         console.error('Error updating staker:', updateError);
-        console.error('Update error details:', JSON.stringify(updateError));
         throw new Error(`Failed to update staker: ${updateError.message}`);
       }
 
-      if (!updateData || updateData.length === 0) {
-        console.error('Version mismatch - concurrent unstake detected');
-        throw new Error('Concurrent unstake detected. Please try again.');
-      }
-
-      console.log('Staker updated successfully:', updateData);
+      console.log('Staker updated successfully');
 
       // Record transaction
-      console.log('Recording transaction...');
-      const { data: txData, error: txError } = await supabase.from('transactions').insert({
+      const { error: txError } = await supabase.from('transactions').insert({
         wallet_address: walletAddress,
         type: 'unstake',
         amount,
         token: 'AURACLE',
-        tx_signature: txSignature,
+        tx_signature: solanaSignature,
         status: 'completed'
-      }).select();
+      });
       
       if (txError) {
         console.error('Error recording transaction:', txError);
-        console.error('Transaction error details:', JSON.stringify(txError));
-        throw new Error(`Failed to record transaction: ${txError.message}`);
       }
 
-      console.log('Transaction recorded successfully:', txData);
       console.log('Database updated successfully');
 
       return new Response(
-        JSON.stringify({ success: true, signature: txSignature }),
+        JSON.stringify({ success: true, signature: solanaSignature }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
 
     } catch (innerError) {
-      // Release lock on error
-      await supabase
-        .from('stakers')
-        .update({ unstake_locked_until: null })
-        .eq('wallet_address', walletAddress);
+      // ONLY release lock if transaction did NOT succeed on-chain
+      if (!transactionSucceeded) {
+        console.log('Releasing lock due to error before transaction success');
+        await supabase
+          .from('stakers')
+          .update({ unstake_locked_until: null })
+          .eq('wallet_address', walletAddress);
+      } else {
+        console.log('Transaction succeeded on-chain but DB update failed - keeping lock to prevent double-spend');
+      }
       
       throw innerError;
     }
 
   } catch (error) {
     console.error('Unstake error:', error);
-    console.error('Error stack:', error.stack);
     return new Response(
       JSON.stringify({ error: error.message || 'Unknown error occurred' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

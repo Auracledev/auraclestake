@@ -4,6 +4,8 @@ import { checkRateLimit, RATE_LIMIT_CONFIGS } from "@shared/rate-limiter.ts";
 import { checkTransactionDuplicate } from "@shared/transaction-dedup.ts";
 import { MAX_STAKE_AMOUNT, SIGNATURE_EXPIRY_MS } from "@shared/constants.ts";
 
+const STAKE_LOCK_DURATION = 120; // 120 seconds
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -97,164 +99,175 @@ Deno.serve(async (req) => {
       );
     }
 
-    const maxRetries = 3;
-    let retryCount = 0;
-    let success = false;
-    let newStakedAmount = 0;
-
-    while (retryCount < maxRetries && !success) {
-      try {
-        const { data: existingStaker, error: fetchError } = await supabaseClient
-          .from('stakers')
-          .select('*')
-          .eq('wallet_address', walletAddress)
-          .maybeSingle();
-
-        if (fetchError) {
-          console.error('Error fetching staker:', fetchError);
-          throw new Error(`Failed to fetch staker: ${fetchError.message}`);
-        }
-
-        const currentVersion = existingStaker?.version || 0;
-
-        if (type === 'stake') {
-          newStakedAmount = (existingStaker?.staked_amount || 0) + parseFloat(amount);
-        } else if (type === 'unstake') {
-          const currentStaked = existingStaker?.staked_amount || 0;
-          if (parseFloat(amount) > currentStaked) {
-            throw new Error(`Insufficient staked balance. You have ${currentStaked} AURACLE staked.`);
-          }
-          newStakedAmount = Math.max(0, currentStaked - parseFloat(amount));
-        }
-
-        if (existingStaker) {
-          const { data: updateData, error: updateError } = await supabaseClient
-            .from('stakers')
-            .update({ 
-              staked_amount: newStakedAmount,
-              last_updated: new Date().toISOString(),
-              version: currentVersion + 1,
-              // Preserve pending_rewards when updating staked amount
-              pending_rewards: existingStaker.pending_rewards || 0
-            })
-            .eq('wallet_address', walletAddress)
-            .eq('version', currentVersion)
-            .select();
-
-          if (updateError) {
-            console.error('Error updating staker:', updateError);
-            throw new Error(`Failed to update staker: ${updateError.message}`);
-          }
-
-          if (!updateData || updateData.length === 0) {
-            retryCount++;
-            console.log(`Version conflict detected, retry ${retryCount}/${maxRetries}`);
-            await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
-            continue;
-          }
-        } else {
-          const { error: insertError } = await supabaseClient
-            .from('stakers')
-            .insert({ 
-              wallet_address: walletAddress,
-              staked_amount: newStakedAmount,
-              version: 1
-            });
-
-          if (insertError) {
-            if (insertError.code === '23505') {
-              retryCount++;
-              console.log(`Duplicate key detected, retry ${retryCount}/${maxRetries}`);
-              await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
-              continue;
-            }
-            console.error('Error inserting staker:', insertError);
-            throw new Error(`Failed to insert staker: ${insertError.message}`);
-          }
-        }
-
-        success = true;
-      } catch (error) {
-        if (retryCount >= maxRetries - 1) {
-          throw error;
-        }
-        retryCount++;
-        await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
-      }
-    }
-
-    if (!success) {
-      throw new Error('Failed to update staker after multiple retries due to concurrent modifications');
-    }
-
-    const { error: txError } = await supabaseClient
-      .from('transactions')
-      .insert({
-        wallet_address: walletAddress,
-        type: type,
-        amount: parseFloat(amount),
-        token: 'AURACLE',
-        tx_signature: txSignature,
-        status: 'completed'
+    // ATOMIC LOCK CHECK AND SET for stake operations
+    if (type === 'stake') {
+      const lockUntil = new Date(Date.now() + STAKE_LOCK_DURATION * 1000).toISOString();
+      
+      const { data: lockResult, error: lockError } = await supabaseClient.rpc('set_stake_lock', {
+        p_wallet_address: walletAddress,
+        p_lock_until: lockUntil
       });
 
-    if (txError) {
-      console.error('Error inserting transaction:', txError);
-      throw new Error(`Failed to insert transaction: ${txError.message}`);
-    }
-
-    const { data: allStakers, error: statsError } = await supabaseClient
-      .from('stakers')
-      .select('staked_amount');
-
-    if (statsError) {
-      console.error('Error fetching all stakers:', statsError);
-      throw new Error(`Failed to fetch stakers for stats: ${statsError.message}`);
-    }
-
-    const totalStaked = allStakers?.reduce((sum, s) => sum + parseFloat(s.staked_amount), 0) || 0;
-    const numberOfStakers = allStakers?.filter(s => parseFloat(s.staked_amount) > 0).length || 0;
-
-    const { data: existingStats } = await supabaseClient
-      .from('platform_stats')
-      .select('id')
-      .limit(1)
-      .maybeSingle();
-
-    if (existingStats) {
-      const { error: updateStatsError } = await supabaseClient
-        .from('platform_stats')
-        .update({ 
-          total_staked: totalStaked,
-          number_of_stakers: numberOfStakers,
-          last_updated: new Date().toISOString()
-        })
-        .eq('id', existingStats.id);
-
-      if (updateStatsError) {
-        console.error('Error updating stats:', updateStatsError);
+      if (lockError || !lockResult) {
+        console.log('Failed to acquire stake lock:', lockError?.message || 'Lock already exists');
+        return new Response(
+          JSON.stringify({ error: 'Stake already in progress. Please wait and try again.' }),
+          { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
-    } else {
-      const { error: insertStatsError } = await supabaseClient
-        .from('platform_stats')
-        .insert({ 
-          total_staked: totalStaked,
-          number_of_stakers: numberOfStakers,
-          vault_sol_balance: 0,
-          weekly_reward_pool: 0
+
+      console.log('Stake lock acquired until:', lockUntil);
+    }
+
+    let operationSucceeded = false;
+
+    try {
+      // Fetch current staker data AFTER lock is set
+      const { data: existingStaker, error: fetchError } = await supabaseClient
+        .from('stakers')
+        .select('*')
+        .eq('wallet_address', walletAddress)
+        .maybeSingle();
+
+      if (fetchError) {
+        console.error('Error fetching staker:', fetchError);
+        throw new Error(`Failed to fetch staker: ${fetchError.message}`);
+      }
+
+      let newStakedAmount = 0;
+
+      if (type === 'stake') {
+        newStakedAmount = (existingStaker?.staked_amount || 0) + parseFloat(amount);
+      } else if (type === 'unstake') {
+        const currentStaked = existingStaker?.staked_amount || 0;
+        if (parseFloat(amount) > currentStaked) {
+          throw new Error(`Insufficient staked balance. You have ${currentStaked} AURACLE staked.`);
+        }
+        newStakedAmount = Math.max(0, currentStaked - parseFloat(amount));
+      }
+
+      // Update or insert staker
+      if (existingStaker) {
+        const updateData: any = { 
+          staked_amount: newStakedAmount,
+          last_updated: new Date().toISOString(),
+          pending_rewards: existingStaker.pending_rewards || 0
+        };
+        
+        // Release stake lock after successful operation
+        if (type === 'stake') {
+          updateData.stake_locked_until = null;
+        }
+
+        const { error: updateError } = await supabaseClient
+          .from('stakers')
+          .update(updateData)
+          .eq('wallet_address', walletAddress);
+
+        if (updateError) {
+          console.error('Error updating staker:', updateError);
+          throw new Error(`Failed to update staker: ${updateError.message}`);
+        }
+      } else {
+        const { error: insertError } = await supabaseClient
+          .from('stakers')
+          .insert({ 
+            wallet_address: walletAddress,
+            staked_amount: newStakedAmount,
+            stake_locked_until: null
+          });
+
+        if (insertError) {
+          console.error('Error inserting staker:', insertError);
+          throw new Error(`Failed to insert staker: ${insertError.message}`);
+        }
+      }
+
+      operationSucceeded = true;
+
+      // Insert transaction record
+      const { error: txError } = await supabaseClient
+        .from('transactions')
+        .insert({
+          wallet_address: walletAddress,
+          type: type,
+          amount: parseFloat(amount),
+          token: 'AURACLE',
+          tx_signature: txSignature,
+          status: 'completed'
         });
 
-      if (insertStatsError) {
-        console.error('Error inserting stats:', insertStatsError);
+      if (txError) {
+        console.error('Error inserting transaction:', txError);
+        throw new Error(`Failed to insert transaction: ${txError.message}`);
       }
+
+      const { data: allStakers, error: statsError } = await supabaseClient
+        .from('stakers')
+        .select('staked_amount');
+
+      if (statsError) {
+        console.error('Error fetching all stakers:', statsError);
+        throw new Error(`Failed to fetch stakers for stats: ${statsError.message}`);
+      }
+
+      const totalStaked = allStakers?.reduce((sum, s) => sum + parseFloat(s.staked_amount), 0) || 0;
+      const numberOfStakers = allStakers?.filter(s => parseFloat(s.staked_amount) > 0).length || 0;
+
+      const { data: existingStats } = await supabaseClient
+        .from('platform_stats')
+        .select('id')
+        .limit(1)
+        .maybeSingle();
+
+      if (existingStats) {
+        const { error: updateStatsError } = await supabaseClient
+          .from('platform_stats')
+          .update({ 
+            total_staked: totalStaked,
+            number_of_stakers: numberOfStakers,
+            last_updated: new Date().toISOString()
+          })
+          .eq('id', existingStats.id);
+
+        if (updateStatsError) {
+          console.error('Error updating stats:', updateStatsError);
+        }
+      } else {
+        const { error: insertStatsError } = await supabaseClient
+          .from('platform_stats')
+          .insert({ 
+            total_staked: totalStaked,
+            number_of_stakers: numberOfStakers,
+            vault_sol_balance: 0,
+            weekly_reward_pool: 0
+          });
+
+        if (insertStatsError) {
+          console.error('Error inserting stats:', insertStatsError);
+        }
+      }
+
+      console.log('Record stake success');
+
+      return new Response(
+        JSON.stringify({ success: true, newStakedAmount }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+
+    } catch (innerError) {
+      // ONLY release lock if operation did NOT succeed
+      if (!operationSucceeded && type === 'stake') {
+        console.log('Releasing stake lock due to error');
+        await supabaseClient
+          .from('stakers')
+          .update({ stake_locked_until: null })
+          .eq('wallet_address', walletAddress);
+      }
+      
+      throw innerError;
     }
 
-    console.log('Record stake success');
-
-    return new Response(
-      JSON.stringify({ success: true, newStakedAmount }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
   } catch (error) {
     console.error('Record stake error:', error);
     return new Response(

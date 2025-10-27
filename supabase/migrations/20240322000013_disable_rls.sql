@@ -1,0 +1,7 @@
+-- Disable RLS on all tables to allow edge functions with service key to work
+ALTER TABLE stakers DISABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE rewards DISABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_stats DISABLE ROW LEVEL SECURITY;
+ALTER TABLE webhook_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE admin_actions DISABLE ROW LEVEL SECURITY;
