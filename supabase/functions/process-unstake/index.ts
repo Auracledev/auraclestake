@@ -1,58 +1,41 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { corsHeaders } from "@shared/cors.ts";
-import { checkRateLimit, RATE_LIMIT_CONFIGS } from "@shared/rate-limiter.ts";
-import { checkTransactionDuplicate } from "@shared/transaction-dedup.ts";
-import { Connection, PublicKey, Transaction, Keypair } from 'npm:@solana/web3.js@1.87.6';
-import { 
-  getAssociatedTokenAddress, 
-  createTransferInstruction,
-  TOKEN_PROGRAM_ID 
-} from 'npm:@solana/spl-token@0.3.9';
-import { VAULT_WALLET, AURACLE_MINT } from "@shared/constants.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { Connection, Keypair, PublicKey, Transaction } from 'https://esm.sh/@solana/web3.js@1.87.6';
 
-const MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 
 Deno.serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { 
+      status: 200,
+      headers: corsHeaders 
+    });
   }
 
   try {
-    const { walletAddress, amount, serializedTransaction } = await req.json();
+    const body = await req.json();
+    const { walletAddress, amount, serializedTransaction } = body;
 
     console.log('Unstake request:', { walletAddress, amount, hasTransaction: !!serializedTransaction });
 
     if (!walletAddress || !amount || !serializedTransaction) {
-      throw new Error('Missing required fields');
+      console.error('Missing fields:', { walletAddress: !!walletAddress, amount: !!amount, serializedTransaction: !!serializedTransaction });
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields: walletAddress, amount, or serializedTransaction' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_KEY')) ?? ''
     );
-
-    // Check rate limit
-    const rateLimitResult = await checkRateLimit(
-      supabaseClient,
-      `unstake:${walletAddress}`,
-      RATE_LIMIT_CONFIGS.unstake
-    );
-
-    if (!rateLimitResult.allowed) {
-      return new Response(
-        JSON.stringify({ 
-          error: `Rate limit exceeded. Please try again in ${rateLimitResult.retryAfter} seconds.` 
-        }),
-        { 
-          status: 429, 
-          headers: { 
-            ...corsHeaders, 
-            'Content-Type': 'application/json',
-            'Retry-After': rateLimitResult.retryAfter?.toString() || '60'
-          } 
-        }
-      );
-    }
 
     const maxRetries = 3;
     let retryCount = 0;
@@ -83,7 +66,7 @@ Deno.serve(async (req) => {
         throw new Error('Vault private key not configured');
       }
 
-      const connection = new Connection(MAINNET_RPC, 'confirmed');
+      const connection = new Connection(SOLANA_RPC_URL, 'confirmed');
       const vaultKeypair = Keypair.fromSecretKey(
         new Uint8Array(JSON.parse(vaultPrivateKey))
       );
@@ -107,16 +90,21 @@ Deno.serve(async (req) => {
       
       await connection.confirmTransaction(signature, 'confirmed');
 
-      // Check if this transaction was already recorded
-      const dedupResult = await checkTransactionDuplicate(supabaseClient, signature);
-      if (dedupResult.isDuplicate) {
+      // Check for duplicate
+      const { data: existingTx } = await supabaseClient
+        .from('transactions')
+        .select('*')
+        .eq('tx_signature', signature)
+        .single();
+
+      if (existingTx) {
         console.log('Transaction already recorded:', signature);
         return new Response(
           JSON.stringify({ 
             success: true,
             signature,
             message: 'Transaction already processed',
-            existingTransaction: dedupResult.existingTx
+            existingTransaction: existingTx
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );

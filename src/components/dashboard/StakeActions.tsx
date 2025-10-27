@@ -180,7 +180,7 @@ export default function StakeActions({
       const transaction = await createUnstakeTransaction(publicKey, amount);
       
       // Send UNSIGNED transaction to backend
-      const { data, error } = await supabase.functions.invoke('supabase-functions-process-unstake', {
+      const response = await supabase.functions.invoke('supabase-functions-process-unstake', {
         body: {
           walletAddress: publicKey.toString(),
           amount,
@@ -191,14 +191,18 @@ export default function StakeActions({
         }
       });
 
-      if (error) {
-        console.error('Edge function error:', error);
-        throw new Error(error.message || 'Failed to process unstake');
+      console.log('Full response:', response);
+
+      if (response.error) {
+        console.error('Edge function error:', response.error);
+        // Try to get more details from the error
+        const errorMessage = response.error.message || response.error.toString();
+        throw new Error(errorMessage);
       }
 
-      if (data?.error) {
-        console.error('Backend error:', data.error);
-        throw new Error(data.error);
+      if (response.data?.error) {
+        console.error('Backend error:', response.data.error);
+        throw new Error(response.data.error);
       }
 
       toast({
@@ -211,6 +215,7 @@ export default function StakeActions({
       fetchBalance();
     } catch (error: any) {
       console.error('Unstake error:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
       toast({
         title: "Unstake failed",
         description: error.message || "Failed to unstake tokens",
