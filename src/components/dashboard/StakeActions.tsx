@@ -193,10 +193,23 @@ export default function StakeActions({
 
       console.log('Full response:', response);
 
+      // Try to read the response body for error details
       if (response.error) {
         console.error('Edge function error:', response.error);
-        // Try to get more details from the error
-        const errorMessage = response.error.message || response.error.toString();
+        
+        // Try to get the response text
+        let errorMessage = 'Unknown error';
+        try {
+          if (response.error.context?.body) {
+            const bodyText = await response.error.context.body.text();
+            console.log('Error body:', bodyText);
+            const errorData = JSON.parse(bodyText);
+            errorMessage = errorData.error || errorMessage;
+          }
+        } catch (e) {
+          console.error('Could not parse error body:', e);
+        }
+        
         throw new Error(errorMessage);
       }
 
