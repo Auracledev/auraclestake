@@ -1,4 +1,4 @@
-import { Connection, PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, SystemProgram, TransactionInstruction } from '@solana/web3.js';
 import { 
   getAssociatedTokenAddress, 
   createTransferInstruction,
@@ -10,11 +10,28 @@ const MAINNET_RPC = 'https://mainnet.helius-rpc.com/?api-key=e9ab9721-93fa-4533-
 
 export const connection = new Connection(MAINNET_RPC, 'confirmed');
 
+// Create a memo instruction to add context to transactions
+function createMemoInstruction(memo: string, signer: PublicKey): TransactionInstruction {
+  const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+  return new TransactionInstruction({
+    keys: [{ pubkey: signer, isSigner: true, isWritable: false }],
+    programId: MEMO_PROGRAM_ID,
+    data: Buffer.from(memo, 'utf-8'),
+  });
+}
+
 export async function createStakeTransaction(
   walletPublicKey: PublicKey,
   amount: number
 ): Promise<Transaction> {
   const transaction = new Transaction();
+  
+  // Add memo instruction for transparency
+  const memoInstruction = createMemoInstruction(
+    `Stake ${amount} AURACLE tokens to Auracle Staking Vault`,
+    walletPublicKey
+  );
+  transaction.add(memoInstruction);
   
   const mintPublicKey = new PublicKey(AURACLE_MINT);
   const vaultPublicKey = new PublicKey(VAULT_WALLET);
@@ -52,6 +69,13 @@ export async function createUnstakeTransaction(
   amount: number
 ): Promise<Transaction> {
   const transaction = new Transaction();
+  
+  // Add memo instruction for transparency
+  const memoInstruction = createMemoInstruction(
+    `Unstake ${amount} AURACLE tokens from Auracle Staking Vault`,
+    walletPublicKey
+  );
+  transaction.add(memoInstruction);
   
   const mintPublicKey = new PublicKey(AURACLE_MINT);
   const vaultPublicKey = new PublicKey(VAULT_WALLET);
