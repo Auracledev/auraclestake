@@ -7,18 +7,38 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { walletAddress, amount, txSignature, type } = await req.json();
+    const body = await req.json();
+    const { walletAddress, amount, txSignature, type } = body;
 
     console.log('Record stake request:', { walletAddress, amount, txSignature, type });
+    console.log('Full request body:', JSON.stringify(body));
 
     if (!walletAddress || !amount || !txSignature || !type) {
-      throw new Error('Missing required fields');
+      const errorMsg = `Missing required fields: ${!walletAddress ? 'walletAddress ' : ''}${!amount ? 'amount ' : ''}${!txSignature ? 'txSignature ' : ''}${!type ? 'type' : ''}`;
+      console.error(errorMsg);
+      return new Response(
+        JSON.stringify({ error: errorMsg }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_KEY') ?? ''
-    );
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    console.log('Supabase URL:', supabaseUrl);
+    console.log('Supabase Key exists:', !!supabaseKey);
+    console.log('Available env vars:', Object.keys(Deno.env.toObject()));
+
+    if (!supabaseUrl || !supabaseKey) {
+      const errorMsg = `Missing Supabase configuration - URL: ${!!supabaseUrl}, Key: ${!!supabaseKey}`;
+      console.error(errorMsg);
+      return new Response(
+        JSON.stringify({ error: errorMsg }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
     const { data: existingStaker, error: fetchError } = await supabaseClient
       .from('stakers')

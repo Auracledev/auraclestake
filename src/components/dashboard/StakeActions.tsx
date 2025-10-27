@@ -120,8 +120,33 @@ export default function StakeActions({
       console.log('Response data:', response.data);
       console.log('Response error:', response.error);
 
+      // Try to get the actual error message from the response
       if (response.error) {
-        console.error('Failed to record stake:', response.error);
+        // Fetch the actual error from the edge function logs
+        const errorMessage = response.error.message || 'Unknown error';
+        console.error('Failed to record stake:', errorMessage);
+        
+        // Try to fetch the response body if available
+        try {
+          const errorResponse = await fetch(`https://lnckpccymikurkirqdwz.supabase.co/functions/v1/supabase-functions-record-stake`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            },
+            body: JSON.stringify({
+              walletAddress: publicKey.toString(),
+              amount,
+              type: 'stake',
+              txSignature: signature
+            })
+          });
+          const errorData = await errorResponse.json();
+          console.error('Direct fetch error data:', errorData);
+        } catch (e) {
+          console.error('Failed to fetch error details:', e);
+        }
+        
         toast({
           title: "Warning",
           description: "Stake succeeded but failed to record in database. Please refresh.",
