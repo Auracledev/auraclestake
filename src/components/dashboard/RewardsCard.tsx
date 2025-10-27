@@ -1,7 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Coins, Loader2, TrendingUp } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Coins, Loader2, TrendingUp, AlertTriangle } from "lucide-react";
 import { useState, useEffect } from "react";
 
 interface RewardsCardProps {
@@ -99,6 +100,15 @@ export default function RewardsCard({
             </>
           )}
         </Button>
+
+        {displayRewards > 0 && (
+          <Alert className="bg-yellow-900/20 border-yellow-600/50">
+            <AlertTriangle className="h-4 w-4 text-yellow-500" />
+            <AlertDescription className="text-yellow-200 text-xs">
+              ⚠️ Remember to claim your SOL rewards before unstaking!
+            </AlertDescription>
+          </Alert>
+        )}
 
         {displayRewards <= 0 && (
           <p className="text-xs text-center text-slate-400">
