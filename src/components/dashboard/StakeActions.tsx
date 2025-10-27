@@ -184,19 +184,22 @@ export default function StakeActions({
         transaction.serialize({ requireAllSignatures: false })
       ).toString('base64');
       
-      console.log('Sending unstake request:', {
+      // Prepare payload with proper number formatting
+      const payload = {
         walletAddress: publicKey.toString(),
-        amount,
+        amount: Number(amount.toFixed(9)), // Ensure it's a proper number, not scientific notation
+        serializedTransaction: serializedTx
+      };
+      
+      console.log('Sending unstake request:', {
+        walletAddress: payload.walletAddress,
+        amount: payload.amount,
         txLength: serializedTx.length
       });
       
       // Send UNSIGNED transaction to backend
       const response = await supabase.functions.invoke('supabase-functions-process-unstake', {
-        body: {
-          walletAddress: publicKey.toString(),
-          amount,
-          serializedTransaction: serializedTx
-        }
+        body: payload
       });
 
       console.log('Full response:', response);
