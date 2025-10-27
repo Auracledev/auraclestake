@@ -59,6 +59,7 @@ Deno.serve(async (req) => {
         status: 'completed'
       });
 
+    // Recalculate platform stats
     const { data: allStakers } = await supabaseClient
       .from('stakers')
       .select('staked_amount');
@@ -66,19 +67,41 @@ Deno.serve(async (req) => {
     const totalStaked = allStakers?.reduce((sum, s) => sum + parseFloat(s.staked_amount), 0) || 0;
     const numberOfStakers = allStakers?.filter(s => parseFloat(s.staked_amount) > 0).length || 0;
 
-    await supabaseClient
+    // Get the first (and should be only) platform_stats row
+    const { data: existingStats } = await supabaseClient
       .from('platform_stats')
-      .update({ 
-        total_staked: totalStaked,
-        number_of_stakers: numberOfStakers,
-        last_updated: new Date().toISOString()
-      });
+      .select('id')
+      .limit(1)
+      .single();
+
+    if (existingStats) {
+      // Update existing row
+      await supabaseClient
+        .from('platform_stats')
+        .update({ 
+          total_staked: totalStaked,
+          number_of_stakers: numberOfStakers,
+          last_updated: new Date().toISOString()
+        })
+        .eq('id', existingStats.id);
+    } else {
+      // Insert if doesn't exist
+      await supabaseClient
+        .from('platform_stats')
+        .insert({ 
+          total_staked: totalStaked,
+          number_of_stakers: numberOfStakers,
+          vault_sol_balance: 0,
+          weekly_reward_pool: 0
+        });
+    }
 
     return new Response(
       JSON.stringify({ success: true, newStakedAmount }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
+    console.error('Record stake error:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
