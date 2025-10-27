@@ -113,30 +113,35 @@ export default function AuracleDashboard() {
     if (!publicKey) return;
 
     try {
-      const { data, error } = await supabase.functions.invoke('supabase-functions-get-user-data', {
+      const response = await supabase.functions.invoke('supabase-functions-get-user-data', {
         body: { walletAddress: publicKey.toString() },
         headers: {
           'Content-Type': 'application/json',
         }
       });
 
-      if (error) {
-        console.error('Error fetching user data:', error);
-        console.error('Error details:', JSON.stringify(error));
-        throw error;
+      console.log('Full response:', response);
+
+      if (response.error) {
+        console.error('Error fetching user data:', response.error);
+        // Try to get the actual error message from the response
+        if (response.error instanceof Error) {
+          console.error('Error message:', response.error.message);
+        }
+        throw response.error;
       }
       
-      if (data?.error) {
-        console.error('Edge function returned error:', data.error);
-        throw new Error(data.error);
+      if (response.data?.error) {
+        console.error('Edge function returned error:', response.data.error);
+        throw new Error(response.data.error);
       }
       
-      if (data) {
+      if (response.data) {
         setUserData({
-          staked_amount: data.staker?.staked_amount || 0,
-          estimatedDailyRewards: data.estimatedDailyRewards || '0',
-          pendingRewards: data.pendingRewards || 0,
-          transactions: data.transactions || [],
+          staked_amount: response.data.staker?.staked_amount || 0,
+          estimatedDailyRewards: response.data.estimatedDailyRewards || '0',
+          pendingRewards: response.data.pendingRewards || 0,
+          transactions: response.data.transactions || [],
         });
       }
     } catch (error) {
