@@ -1,10 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from "@shared/cors.ts";
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from 'npm:@solana/web3.js@1.87.6';
-import { VAULT_WALLET } from "@shared/constants.ts";
+import { getAccount, getAssociatedTokenAddress } from 'npm:@solana/spl-token@0.3.9';
+import { VAULT_WALLET, AURACLE_MINT } from "@shared/constants.ts";
 
 const MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
 const SECONDS_PER_WEEK = 7 * 24 * 60 * 60;
+const AURACLE_DECIMALS = 6;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -45,7 +47,7 @@ Deno.serve(async (req) => {
       }
     });
 
-    // Fetch staker data
+    // Fetch staker data from database (this is the user's staked amount)
     const { data: staker, error: stakerError } = await supabaseClient
       .from('stakers')
       .select('*')
@@ -84,29 +86,32 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Calculate real-time rewards
+    // Calculate rewards using: USER'S DATABASE STAKED AMOUNT / TOTAL BLOCKCHAIN VAULT BALANCE
     let estimatedDailyRewards = '0';
     let pendingRewards = 0;
     let rewardsPerSecond = 0;
 
     if (staker && staker.staked_amount > 0) {
-      // Get real-time vault balance
       const connection = new Connection(MAINNET_RPC, 'confirmed');
       const vaultPublicKey = new PublicKey(VAULT_WALLET);
+      const mintPublicKey = new PublicKey(AURACLE_MINT);
+
+      // Get real vault SOL balance from blockchain
       const vaultBalance = await connection.getBalance(vaultPublicKey);
       const vaultSOL = vaultBalance / LAMPORTS_PER_SOL;
 
-      // Get total staked from all stakers
-      const { data: allStakers } = await supabaseClient
-        .from('stakers')
-        .select('staked_amount')
-        .gt('staked_amount', 0);
-
-      const totalStaked = allStakers?.reduce((sum, s) => sum + parseFloat(s.staked_amount), 0) || 0;
+      // Get total staked AURACLE from vault wallet on blockchain
+      const vaultTokenAccount = await getAssociatedTokenAddress(
+        mintPublicKey,
+        vaultPublicKey
+      );
+      const accountInfo = await getAccount(connection, vaultTokenAccount);
+      const totalStaked = Number(accountInfo.amount) / Math.pow(10, AURACLE_DECIMALS);
 
       if (totalStaked > 0) {
-        const stakedAmount = parseFloat(staker.staked_amount);
-        const stakerShare = stakedAmount / totalStaked;
+        // Use the user's DATABASE staked amount (not blockchain)
+        const userStakedAmount = parseFloat(staker.staked_amount);
+        const stakerShare = userStakedAmount / totalStaked;
         
         // Simple formula: (your_stake / total_stake) × vault_SOL × 50% distributed over 1 week
         const weeklyVaultDistribution = vaultSOL * 0.5;

@@ -188,11 +188,11 @@ export default function AuracleDashboard() {
 
   const handleUnstake = async (amount: number) => {
     console.log('Unstake completed, refreshing data...');
-    // Wait a moment for the database to update
+    // Wait longer for the database to update
     setTimeout(() => {
       fetchUserData();
       fetchPlatformStats();
-    }, 1000);
+    }, 2000);
   };
 
   return (
