@@ -1,4 +1,4 @@
-import { Connection, PublicKey, Transaction, SystemProgram, TransactionInstruction } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, SystemProgram, TransactionInstruction, ComputeBudgetProgram } from '@solana/web3.js';
 import { 
   getAssociatedTokenAddress, 
   createTransferInstruction,
@@ -26,9 +26,21 @@ export async function createStakeTransaction(
 ): Promise<Transaction> {
   const transaction = new Transaction();
   
+  // Add compute budget to ensure transaction has enough compute units
+  const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+    units: 200_000
+  });
+  transaction.add(computeBudgetIx);
+  
+  // Add priority fee to help with transaction landing
+  const priorityFeeIx = ComputeBudgetProgram.setComputeUnitPrice({
+    microLamports: 1000
+  });
+  transaction.add(priorityFeeIx);
+  
   // Add memo instruction for transparency
   const memoInstruction = createMemoInstruction(
-    `Stake ${amount} AURACLE tokens to Auracle Staking Vault`,
+    `Auracle Staking: Stake ${amount} AURACLE`,
     walletPublicKey
   );
   transaction.add(memoInstruction);
@@ -57,8 +69,9 @@ export async function createStakeTransaction(
   
   transaction.add(transferInstruction);
   
-  const { blockhash } = await connection.getLatestBlockhash();
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
   transaction.recentBlockhash = blockhash;
+  transaction.lastValidBlockHeight = lastValidBlockHeight;
   transaction.feePayer = walletPublicKey;
   
   return transaction;
@@ -70,9 +83,21 @@ export async function createUnstakeTransaction(
 ): Promise<Transaction> {
   const transaction = new Transaction();
   
+  // Add compute budget to ensure transaction has enough compute units
+  const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+    units: 200_000
+  });
+  transaction.add(computeBudgetIx);
+  
+  // Add priority fee to help with transaction landing
+  const priorityFeeIx = ComputeBudgetProgram.setComputeUnitPrice({
+    microLamports: 1000
+  });
+  transaction.add(priorityFeeIx);
+  
   // Add memo instruction for transparency
   const memoInstruction = createMemoInstruction(
-    `Unstake ${amount} AURACLE tokens from Auracle Staking Vault`,
+    `Auracle Staking: Unstake ${amount} AURACLE`,
     walletPublicKey
   );
   transaction.add(memoInstruction);
@@ -101,8 +126,9 @@ export async function createUnstakeTransaction(
   
   transaction.add(transferInstruction);
   
-  const { blockhash } = await connection.getLatestBlockhash();
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
   transaction.recentBlockhash = blockhash;
+  transaction.lastValidBlockHeight = lastValidBlockHeight;
   transaction.feePayer = walletPublicKey;
   
   return transaction;
