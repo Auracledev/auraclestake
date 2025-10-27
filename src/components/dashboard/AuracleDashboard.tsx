@@ -120,14 +120,12 @@ export default function AuracleDashboard() {
         }
       });
 
-      console.log('Full response:', response);
+      console.log('Full response:', JSON.stringify(response, null, 2));
+      console.log('Response data:', response.data);
+      console.log('Response error:', response.error);
 
       if (response.error) {
         console.error('Error fetching user data:', response.error);
-        // Try to get the actual error message from the response
-        if (response.error instanceof Error) {
-          console.error('Error message:', response.error.message);
-        }
         throw response.error;
       }
       

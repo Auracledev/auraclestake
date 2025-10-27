@@ -101,6 +101,8 @@ export default function StakeActions({
         throw new Error('Transaction failed');
       }
 
+      console.log('Transaction confirmed, recording stake...');
+
       // Record stake in database
       const response = await supabase.functions.invoke('supabase-functions-record-stake', {
         body: {
@@ -114,7 +116,9 @@ export default function StakeActions({
         }
       });
 
-      console.log('Full record response:', response);
+      console.log('Full record response:', JSON.stringify(response, null, 2));
+      console.log('Response data:', response.data);
+      console.log('Response error:', response.error);
 
       if (response.error) {
         console.error('Failed to record stake:', response.error);
