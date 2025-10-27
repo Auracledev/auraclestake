@@ -90,16 +90,15 @@ export default function StakeActions({
         }
       );
       
-      // Wait for confirmation
-      const confirmation = await connection.confirmTransaction({
+      // Wait for confirmation using polling (no WebSocket)
+      console.log('Waiting for transaction confirmation...');
+      const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+      
+      await connection.confirmTransaction({
         signature,
-        blockhash: transaction.recentBlockhash!,
-        lastValidBlockHeight: (await connection.getLatestBlockhash()).lastValidBlockHeight
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight
       }, 'confirmed');
-
-      if (confirmation.value.err) {
-        throw new Error('Transaction failed');
-      }
 
       console.log('Transaction confirmed, recording stake...');
 

@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
 
     // Initialize Supabase
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_KEY');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SERVICE_ROLE_KEY');
     
     if (!supabaseUrl || !supabaseKey) {
       console.error('Missing Supabase config');
@@ -207,41 +207,48 @@ Deno.serve(async (req) => {
       
       if (deleteError) {
         console.error('Error deleting staker:', deleteError);
-        throw new Error(`Failed to update database: ${deleteError.message}`);
+        console.error('Delete error details:', JSON.stringify(deleteError));
+        throw new Error(`Failed to delete staker: ${deleteError.message}`);
       }
+      console.log('Staker deleted successfully');
     } else {
       console.log('Updating staker balance to:', newAmount);
-      const { error: updateError } = await supabase
+      const { data: updateData, error: updateError } = await supabase
         .from('stakers')
         .update({ 
           staked_amount: newAmount, 
           last_updated: new Date().toISOString(),
           version: stakerData.version + 1 
         })
-        .eq('wallet_address', walletAddress);
+        .eq('wallet_address', walletAddress)
+        .select();
       
       if (updateError) {
         console.error('Error updating staker:', updateError);
-        throw new Error(`Failed to update database: ${updateError.message}`);
+        console.error('Update error details:', JSON.stringify(updateError));
+        throw new Error(`Failed to update staker: ${updateError.message}`);
       }
+      console.log('Staker updated successfully:', updateData);
     }
 
     // Record transaction
     console.log('Recording transaction...');
-    const { error: txError } = await supabase.from('transactions').insert({
+    const { data: txData, error: txError } = await supabase.from('transactions').insert({
       wallet_address: walletAddress,
       type: 'unstake',
       amount,
       token: 'AURACLE',
       tx_signature: txSignature,
       status: 'completed'
-    });
+    }).select();
     
     if (txError) {
       console.error('Error recording transaction:', txError);
+      console.error('Transaction error details:', JSON.stringify(txError));
       throw new Error(`Failed to record transaction: ${txError.message}`);
     }
 
+    console.log('Transaction recorded successfully:', txData);
     console.log('Database updated successfully');
 
     return new Response(
