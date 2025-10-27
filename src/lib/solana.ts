@@ -158,9 +158,12 @@ export async function getTokenBalance(walletPublicKey: PublicKey): Promise<numbe
     );
     
     const accountInfo = await getAccount(connection, tokenAccount);
-    // Convert BigInt to number properly to avoid precision loss
+    // Convert BigInt to string first to preserve precision
     const rawAmount = accountInfo.amount.toString();
-    return parseFloat(rawAmount) / Math.pow(10, AURACLE_DECIMALS);
+    console.log('Raw token amount:', rawAmount);
+    const balance = parseFloat(rawAmount) / Math.pow(10, AURACLE_DECIMALS);
+    console.log('Calculated balance:', balance);
+    return balance;
   } catch (error) {
     console.error('Error fetching token balance:', error);
     return 0;

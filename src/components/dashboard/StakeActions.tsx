@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
-import { ArrowDownRight, ArrowUpRight, Loader2 } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Loader2, RefreshCw } from "lucide-react";
 import { useWallet } from '@solana/wallet-adapter-react';
 import { createStakeTransaction, createUnstakeTransaction, getTokenBalance, connection } from '@/lib/solana';
 import { supabase } from '@/lib/supabase';
@@ -26,6 +26,7 @@ export default function StakeActions({
   const [isStaking, setIsStaking] = useState(false);
   const [isUnstaking, setIsUnstaking] = useState(false);
   const [availableBalance, setAvailableBalance] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const { publicKey, signTransaction } = useWallet();
   const { toast } = useToast();
@@ -38,8 +39,11 @@ export default function StakeActions({
 
   const fetchBalance = async () => {
     if (!publicKey) return;
+    setIsRefreshing(true);
     const balance = await getTokenBalance(publicKey);
+    console.log('Fetched balance:', balance);
     setAvailableBalance(balance);
+    setIsRefreshing(false);
   };
 
   // Helper to format AURACLE amounts without trailing zeros
@@ -223,7 +227,18 @@ export default function StakeActions({
                 className="bg-slate-800 border-slate-700 text-white"
                 disabled={isStaking}
               />
-              <p className="text-xs text-slate-400">Available: {formatAuracle(availableBalance)} AURACLE</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-400">Available: {formatAuracle(availableBalance)} AURACLE</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={fetchBalance}
+                  disabled={isRefreshing}
+                  className="h-6 px-2 text-xs text-slate-400 hover:text-white"
+                >
+                  <RefreshCw className={`h-3 w-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
             </div>
             <Button 
               onClick={handleStake} 
