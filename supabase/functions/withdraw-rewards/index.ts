@@ -1,5 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from "@shared/cors.ts";
+import { checkRateLimit, RATE_LIMIT_CONFIGS } from "@shared/rate-limiter.ts";
+import { checkTransactionDuplicate } from "@shared/transaction-dedup.ts";
 import { Connection, PublicKey, Transaction, Keypair, SystemProgram, LAMPORTS_PER_SOL } from 'npm:@solana/web3.js@1.87.6';
 import { VAULT_WALLET } from "@shared/constants.ts";
 
@@ -14,7 +16,7 @@ Deno.serve(async (req) => {
 
   const supabaseClient = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_KEY') ?? ''
+    (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_KEY')) ?? ''
   );
 
   try {
@@ -22,6 +24,29 @@ Deno.serve(async (req) => {
 
     if (!walletAddress) {
       throw new Error('Wallet address is required');
+    }
+
+    // Check rate limit
+    const rateLimitResult = await checkRateLimit(
+      supabaseClient,
+      `withdraw:${walletAddress}`,
+      RATE_LIMIT_CONFIGS.withdraw
+    );
+
+    if (!rateLimitResult.allowed) {
+      return new Response(
+        JSON.stringify({ 
+          error: `Rate limit exceeded. Please try again in ${rateLimitResult.retryAfter} seconds.` 
+        }),
+        { 
+          status: 429, 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json',
+            'Retry-After': rateLimitResult.retryAfter?.toString() || '60'
+          } 
+        }
+      );
     }
 
     await supabaseClient
@@ -144,6 +169,22 @@ Deno.serve(async (req) => {
 
       signature = await connection.sendRawTransaction(transaction.serialize());
       await connection.confirmTransaction(signature, 'confirmed');
+
+      // Check if this transaction was already recorded
+      const dedupResult = await checkTransactionDuplicate(supabaseClient, signature);
+      if (dedupResult.isDuplicate) {
+        console.log('Withdrawal transaction already recorded:', signature);
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            signature,
+            amount: totalRewards,
+            message: 'Withdrawal already processed',
+            existingTransaction: dedupResult.existingTx
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
       const { error: updateError } = await supabaseClient
         .from('stakers')

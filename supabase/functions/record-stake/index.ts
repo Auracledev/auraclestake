@@ -1,5 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from "@shared/cors.ts";
+import { checkRateLimit, RATE_LIMIT_CONFIGS } from "@shared/rate-limiter.ts";
+import { checkTransactionDuplicate } from "@shared/transaction-dedup.ts";
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -22,7 +24,7 @@ Deno.serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_KEY')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_KEY')!;
 
     if (!supabaseUrl || !supabaseKey) {
       const errorMsg = `Missing Supabase configuration`;
@@ -34,6 +36,43 @@ Deno.serve(async (req) => {
     }
 
     const supabaseClient = createClient(supabaseUrl, supabaseKey);
+
+    // Check rate limit
+    const rateLimitResult = await checkRateLimit(
+      supabaseClient,
+      `stake:${walletAddress}`,
+      RATE_LIMIT_CONFIGS.stake
+    );
+
+    if (!rateLimitResult.allowed) {
+      return new Response(
+        JSON.stringify({ 
+          error: `Rate limit exceeded. Please try again in ${rateLimitResult.retryAfter} seconds.` 
+        }),
+        { 
+          status: 429, 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json',
+            'Retry-After': rateLimitResult.retryAfter?.toString() || '60'
+          } 
+        }
+      );
+    }
+
+    // Check for duplicate transaction
+    const dedupResult = await checkTransactionDuplicate(supabaseClient, txSignature);
+    
+    if (dedupResult.isDuplicate) {
+      console.log('Duplicate transaction detected:', txSignature);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Transaction already processed',
+          existingTransaction: dedupResult.existingTx
+        }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const maxRetries = 3;
     let retryCount = 0;
