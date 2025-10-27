@@ -103,67 +103,39 @@ export default function StakeActions({
 
       console.log('Transaction confirmed, recording stake...');
 
-      // Record stake in database
-      const response = await supabase.functions.invoke('supabase-functions-record-stake', {
-        body: {
-          walletAddress: publicKey.toString(),
-          amount,
-          type: 'stake',
-          txSignature: signature
-        },
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
+      // Record stake in database - use direct fetch since Supabase client has issues
+      try {
+        const recordResponse = await fetch(`https://lnckpccymikurkirqdwz.supabase.co/functions/v1/supabase-functions-record-stake`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            walletAddress: publicKey.toString(),
+            amount,
+            type: 'stake',
+            txSignature: signature
+          })
+        });
 
-      console.log('Full record response:', JSON.stringify(response, null, 2));
-      console.log('Response data:', response.data);
-      console.log('Response error:', response.error);
+        const recordData = await recordResponse.json();
+        console.log('Record stake response:', recordData);
 
-      // Try to get the actual error message from the response
-      if (response.error) {
-        // Fetch the actual error from the edge function logs
-        const errorMessage = response.error.message || 'Unknown error';
-        console.error('Failed to record stake:', errorMessage);
-        
-        // Try to fetch the response body if available
-        try {
-          const errorResponse = await fetch(`https://lnckpccymikurkirqdwz.supabase.co/functions/v1/supabase-functions-record-stake`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-            },
-            body: JSON.stringify({
-              walletAddress: publicKey.toString(),
-              amount,
-              type: 'stake',
-              txSignature: signature
-            })
+        if (recordData.success) {
+          toast({
+            title: "Stake successful!",
+            description: `Successfully staked ${amount} AURACLE`,
           });
-          const errorData = await errorResponse.json();
-          console.error('Direct fetch error data:', errorData);
-        } catch (e) {
-          console.error('Failed to fetch error details:', e);
+        } else {
+          throw new Error(recordData.error || 'Failed to record stake');
         }
-        
+      } catch (recordError) {
+        console.error('Failed to record stake:', recordError);
         toast({
           title: "Warning",
           description: "Stake succeeded but failed to record in database. Please refresh.",
           variant: "destructive"
-        });
-      } else if (response.data?.error) {
-        console.error('Edge function returned error:', response.data.error);
-        toast({
-          title: "Warning",
-          description: `Stake succeeded but: ${response.data.error}`,
-          variant: "destructive"
-        });
-      } else {
-        console.log('Stake recorded successfully:', response.data);
-        toast({
-          title: "Stake successful!",
-          description: `Successfully staked ${amount} AURACLE`,
         });
       }
 
