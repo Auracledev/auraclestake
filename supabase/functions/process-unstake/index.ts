@@ -16,13 +16,28 @@ Deno.serve(async (req) => {
     console.log('Process unstake request received');
     
     const bodyText = await req.text();
+    console.log('Raw body:', bodyText);
+    
     const body = JSON.parse(bodyText);
     const { walletAddress, amount, serializedTransaction } = body;
     
-    console.log('Parsed request:', { walletAddress, amount });
+    console.log('Parsed request:', { walletAddress, amount, amountType: typeof amount });
 
-    // Convert amount from string to number
-    const amountNum = parseFloat(amount);
+    // Convert amount - handle both string and number
+    let amountNum: number;
+    if (typeof amount === 'string') {
+      amountNum = parseFloat(amount);
+    } else if (typeof amount === 'number') {
+      amountNum = amount;
+    } else {
+      return new Response(
+        JSON.stringify({ error: 'Invalid amount format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    console.log('Amount as number:', amountNum);
+    
     if (isNaN(amountNum) || amountNum <= 0) {
       return new Response(
         JSON.stringify({ error: 'Invalid amount' }),

@@ -186,10 +186,10 @@ export default function StakeActions({
         transaction.serialize({ requireAllSignatures: false })
       ).toString('base64');
       
-      // Prepare payload
+      // Prepare payload - send amount as number, not string
       const payload = {
         walletAddress: publicKey.toString(),
-        amount: String(amount),
+        amount: amount, // Send as number
         serializedTransaction: serializedTx
       };
       
