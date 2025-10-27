@@ -225,11 +225,13 @@ export default function StakeActions({
 
       setUnstakeAmount("");
       
-      // Force immediate refresh of user data and balance
-      await Promise.all([
-        fetchBalance(),
-        onUnstake(amount)
-      ]);
+      // Wait a moment for database to update, then refresh
+      setTimeout(async () => {
+        await Promise.all([
+          fetchBalance(),
+          onUnstake(amount)
+        ]);
+      }, 500);
       
     } catch (error: any) {
       console.error('Unstake error:', error);

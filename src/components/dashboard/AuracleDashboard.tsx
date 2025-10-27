@@ -143,12 +143,14 @@ export default function AuracleDashboard() {
       }
       
       if (data) {
-        setUserData({
+        const newUserData = {
           staked_amount: data.staker?.staked_amount || 0,
           estimatedDailyRewards: data.estimatedDailyRewards || '0',
           pendingRewards: data.pendingRewards || 0,
           transactions: data.transactions || [],
-        });
+        };
+        console.log('Setting user data:', newUserData);
+        setUserData(newUserData);
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
