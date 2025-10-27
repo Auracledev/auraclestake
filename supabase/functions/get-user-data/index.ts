@@ -18,7 +18,13 @@ Deno.serve(async (req) => {
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_KEY') ?? '',
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
     );
 
     // Fetch staker data
@@ -31,8 +37,12 @@ Deno.serve(async (req) => {
     if (stakerError) {
       console.error('Staker query error:', stakerError);
       return new Response(
-        JSON.stringify({ error: `Database error: ${stakerError.message}` }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          error: 'Database error',
+          details: stakerError.message,
+          code: stakerError.code 
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -47,8 +57,12 @@ Deno.serve(async (req) => {
     if (txError) {
       console.error('Transactions query error:', txError);
       return new Response(
-        JSON.stringify({ error: `Database error: ${txError.message}` }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          error: 'Database error',
+          details: txError.message,
+          code: txError.code 
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -69,17 +83,21 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         staker,
-        transactions,
+        transactions: transactions || [],
         estimatedDailyRewards,
         pendingRewards: staker?.pending_rewards || 0
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
     console.error('Get user data error:', error);
     return new Response(
-      JSON.stringify({ error: `Server error: ${error.message}` }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ 
+        error: 'Server error',
+        details: error.message,
+        stack: error.stack 
+      }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

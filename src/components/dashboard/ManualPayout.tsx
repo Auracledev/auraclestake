@@ -24,21 +24,23 @@ export default function ManualPayout({ onPayoutComplete, onTriggerPayout }: Manu
     try {
       setLoading(true);
       
-      // Fetch the most recent reward distribution
+      // Fetch the most recent reward transaction
       const { data, error } = await supabase
-        .from('rewards')
-        .select('distributed_at')
-        .order('distributed_at', { ascending: false })
+        .from('transactions')
+        .select('created_at')
+        .eq('type', 'reward')
+        .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+      if (error) {
         console.error('Error fetching last payout:', error);
+        setLastPayout('Unknown');
         return;
       }
 
-      if (data?.distributed_at) {
-        const payoutDate = new Date(data.distributed_at);
+      if (data?.created_at) {
+        const payoutDate = new Date(data.created_at);
         const now = new Date();
         const diffMs = now.getTime() - payoutDate.getTime();
         const diffMins = Math.floor(diffMs / 60000);
