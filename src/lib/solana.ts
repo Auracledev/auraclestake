@@ -109,17 +109,33 @@ export async function createUnstakeTransaction(
     walletPublicKey
   );
 
-  // Create transfer instruction with vault as authority
+  const transaction = new Transaction();
+
+  // Check if user's token account exists, if not create it
+  try {
+    await getAccount(connection, toTokenAccount);
+  } catch (error) {
+    // Account doesn't exist, add instruction to create it
+    const createAccountIx = createAssociatedTokenAccountInstruction(
+      walletPublicKey, // payer (user pays for account creation)
+      toTokenAccount,
+      walletPublicKey,
+      mintPublicKey
+    );
+    transaction.add(createAccountIx);
+  }
+
+  // Create transfer instruction - vault is the authority but user initiates
   const transferInstruction = createTransferInstruction(
     fromTokenAccount,
     toTokenAccount,
-    vaultPublicKey, // vault is the authority
+    vaultPublicKey, // vault is the authority (will be signed by backend)
     BigInt(Math.floor(amount * Math.pow(10, AURACLE_DECIMALS))),
     [],
     TOKEN_PROGRAM_ID
   );
   
-  const transaction = new Transaction().add(transferInstruction);
+  transaction.add(transferInstruction);
   
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
   transaction.recentBlockhash = blockhash;

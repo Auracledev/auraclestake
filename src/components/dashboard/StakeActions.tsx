@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 import { ArrowDownRight, ArrowUpRight, Loader2, RefreshCw } from "lucide-react";
 import { useWallet } from '@solana/wallet-adapter-react';
-import { createStakeTransaction, createUnstakeTransaction, getTokenBalance, connection } from '@/lib/solana';
+import { createStakeTransaction, getTokenBalance, connection } from '@/lib/solana';
 import { supabase } from '@/lib/supabase';
 import { useToast } from "@/components/ui/use-toast";
 
@@ -28,7 +28,7 @@ export default function StakeActions({
   const [availableBalance, setAvailableBalance] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
-  const { publicKey, signTransaction } = useWallet();
+  const { publicKey, signTransaction, signMessage } = useWallet();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -155,7 +155,7 @@ export default function StakeActions({
   };
 
   const handleUnstake = async () => {
-    if (!publicKey || !signTransaction) {
+    if (!publicKey || !signMessage) {
       toast({
         title: "Wallet not connected",
         description: "Please connect your wallet to unstake",
@@ -176,21 +176,35 @@ export default function StakeActions({
 
     setIsUnstaking(true);
     try {
-      // Simple approach: just send wallet address and amount
-      // Backend will verify the user has staked amount and process
-      const response = await supabase.functions.invoke('supabase-functions-process-unstake', {
-        body: {
+      // Create message for user to sign
+      const message = `Unstake ${amount} AURACLE from ${publicKey.toString()}`;
+      const encodedMessage = new TextEncoder().encode(message);
+      
+      // User signs the message to authorize unstake
+      const signature = await signMessage(encodedMessage);
+      const signatureBase64 = Buffer.from(signature).toString('base64');
+
+      console.log('User signed unstake authorization');
+
+      // Send to backend with signature proof
+      const response = await fetch(`https://lnckpccymikurkirqdwz.supabase.co/functions/v1/supabase-functions-process-unstake`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({
           walletAddress: publicKey.toString(),
-          amount: amount
-        }
+          amount,
+          message,
+          signature: signatureBase64
+        })
       });
 
-      if (response.error) {
-        throw new Error(response.error.message);
-      }
-
-      if (response.data?.error) {
-        throw new Error(response.data.error);
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
       }
 
       toast({
