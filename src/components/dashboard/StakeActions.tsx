@@ -42,6 +42,14 @@ export default function StakeActions({
     setAvailableBalance(balance);
   };
 
+  // Helper to format AURACLE amounts without trailing zeros
+  const formatAuracle = (amount: number) => {
+    return amount.toLocaleString('en-US', { 
+      minimumFractionDigits: 0, 
+      maximumFractionDigits: 9 
+    });
+  };
+
   const handleStake = async () => {
     if (!publicKey || !signTransaction) {
       toast({
@@ -215,7 +223,7 @@ export default function StakeActions({
                 className="bg-slate-800 border-slate-700 text-white"
                 disabled={isStaking}
               />
-              <p className="text-xs text-slate-400">Available: {availableBalance.toLocaleString()} AURACLE</p>
+              <p className="text-xs text-slate-400">Available: {formatAuracle(availableBalance)} AURACLE</p>
             </div>
             <Button 
               onClick={handleStake} 
@@ -245,7 +253,7 @@ export default function StakeActions({
                 className="bg-slate-800 border-slate-700 text-white"
                 disabled={isUnstaking}
               />
-              <p className="text-xs text-slate-400">Staked: {stakedAmount.toLocaleString()} AURACLE</p>
+              <p className="text-xs text-slate-400">Staked: {formatAuracle(stakedAmount)} AURACLE</p>
             </div>
             <Button 
               onClick={handleUnstake} 

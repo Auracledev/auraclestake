@@ -47,6 +47,14 @@ export default function AuracleDashboard() {
 
   const [loading, setLoading] = useState(true);
 
+  // Helper to format AURACLE amounts without trailing zeros
+  const formatAuracle = (amount: number) => {
+    return amount.toLocaleString('en-US', { 
+      minimumFractionDigits: 0, 
+      maximumFractionDigits: 9 
+    });
+  };
+
   useEffect(() => {
     fetchPlatformStats();
 
@@ -192,7 +200,7 @@ export default function AuracleDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <StatCard
               title="Total AURACLE Staked"
-              value={loading ? "Loading..." : platformStats.total_staked.toLocaleString()}
+              value={loading ? "Loading..." : formatAuracle(platformStats.total_staked)}
               subtitle="Across all stakers"
               icon={<Coins className="h-4 w-4 text-purple-400" />}
             />
@@ -214,7 +222,7 @@ export default function AuracleDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <StatCard
                     title="Your Staked AURACLE"
-                    value={userData.staked_amount.toLocaleString()}
+                    value={formatAuracle(userData.staked_amount)}
                     subtitle="Currently earning rewards"
                   />
                   <StatCard
@@ -274,7 +282,7 @@ export default function AuracleDashboard() {
               />
               <StatCard
                 title="Your Staked AURACLE"
-                value={userData.staked_amount.toLocaleString()}
+                value={formatAuracle(userData.staked_amount)}
                 subtitle="Admin wallet stake"
               />
               <StatCard
