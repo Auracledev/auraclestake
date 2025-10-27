@@ -277,10 +277,12 @@ Deno.serve(async (req) => {
       console.log('Updating staker balance from', stakerData.staked_amount, 'to', stakerData.staked_amount - amount);
       const newAmount = stakerData.staked_amount - amount;
       
+      // ANY unstake resets first_staked_at
       const { error: updateError } = await supabase
         .from('stakers')
         .update({ 
           staked_amount: newAmount, 
+          first_staked_at: null,  // Reset loyalty timer on ANY unstake
           last_updated: new Date().toISOString(),
           unstake_locked_until: null
         })

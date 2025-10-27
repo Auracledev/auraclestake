@@ -4,7 +4,23 @@ import { ADMIN_WALLET, VAULT_WALLET } from "@shared/constants.ts";
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from 'npm:@solana/web3.js@1.87.6';
 
 const MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
-const WEEKLY_REWARD_RATE = 0.005; // 0.5% weekly = 26% APY
+
+// Loyalty boost tiers based on continuous staking days
+function getLoyaltyBoost(stakingDays: number): number {
+  if (stakingDays >= 90) return 1.5;  // 50% boost
+  if (stakingDays >= 60) return 1.4;  // 40% boost
+  if (stakingDays >= 30) return 1.3;  // 30% boost
+  if (stakingDays >= 7) return 1.1;   // 10% boost
+  return 1.0;                          // No boost
+}
+
+function calculateStakingDays(firstStakedAt: string): number {
+  const firstStaked = new Date(firstStakedAt);
+  const now = new Date();
+  const diffTime = Math.abs(now.getTime() - firstStaked.getTime());
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays;
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -38,24 +54,43 @@ Deno.serve(async (req) => {
       throw new Error('No active stakers found');
     }
 
-    const totalStaked = stakers.reduce((sum, s) => sum + parseFloat(s.staked_amount), 0);
+    // Calculate weighted shares with loyalty boost
+    let totalWeightedShares = 0;
+    const stakerData = [];
 
-    if (totalStaked === 0) {
-      throw new Error('No tokens staked');
+    for (const staker of stakers) {
+      const stakedAmount = parseFloat(staker.staked_amount);
+      const stakingDays = calculateStakingDays(staker.first_staked_at);
+      const loyaltyBoost = getLoyaltyBoost(stakingDays);
+      const weightedShares = stakedAmount * loyaltyBoost;
+
+      stakerData.push({
+        ...staker,
+        stakedAmount,
+        stakingDays,
+        loyaltyBoost,
+        weightedShares
+      });
+
+      totalWeightedShares += weightedShares;
     }
+
+    if (totalWeightedShares === 0) {
+      throw new Error('No weighted shares calculated');
+    }
+
+    // Weekly reward pool = 50% of vault SOL
+    const weeklyRewardPool = vaultSOL * 0.5;
 
     const rewards = [];
     let totalRewardsDistributed = 0;
 
-    for (const staker of stakers) {
-      const stakedAmount = parseFloat(staker.staked_amount);
-      const stakerShare = stakedAmount / totalStaked;
+    for (const staker of stakerData) {
+      // User's share based on weighted shares (includes loyalty boost)
+      const userShare = staker.weightedShares / totalWeightedShares;
+      const weeklyReward = weeklyRewardPool * userShare;
       
-      // Calculate reward: 0.5% of staked amount, distributed proportionally from 90% of vault
-      const baseReward = stakedAmount * WEEKLY_REWARD_RATE;
-      const rewardInSOL = (baseReward / totalStaked) * vaultSOL * 0.9; // Use 90% of vault for weekly rewards
-      
-      const newPendingRewards = parseFloat(staker.pending_rewards || 0) + rewardInSOL;
+      const newPendingRewards = parseFloat(staker.pending_rewards || 0) + weeklyReward;
       
       await supabaseClient
         .from('stakers')
@@ -67,12 +102,16 @@ Deno.serve(async (req) => {
 
       rewards.push({
         wallet_address: staker.wallet_address,
-        staked: stakedAmount,
-        reward: rewardInSOL,
+        staked: staker.stakedAmount,
+        stakingDays: staker.stakingDays,
+        loyaltyBoost: staker.loyaltyBoost,
+        weightedShares: staker.weightedShares,
+        sharePercentage: (userShare * 100).toFixed(2) + '%',
+        reward: weeklyReward,
         newBalance: newPendingRewards
       });
 
-      totalRewardsDistributed += rewardInSOL;
+      totalRewardsDistributed += weeklyReward;
     }
 
     // Update platform stats
@@ -80,7 +119,7 @@ Deno.serve(async (req) => {
       .from('platform_stats')
       .update({ 
         vault_sol_balance: vaultSOL,
-        weekly_reward_pool: totalRewardsDistributed,
+        weekly_reward_pool: weeklyRewardPool,
         last_updated: new Date().toISOString()
       });
 
@@ -92,9 +131,11 @@ Deno.serve(async (req) => {
         details: { 
           totalStakers: stakers.length,
           totalRewards: totalRewardsDistributed,
+          totalWeightedShares,
           vaultBalance: vaultSOL,
-          rewardRate: `${WEEKLY_REWARD_RATE * 100}%`,
-          vaultPercentage: '90%',
+          weeklyRewardPool: weeklyRewardPool,
+          vaultPercentage: '50%',
+          loyaltyBoostEnabled: true,
           timestamp: new Date().toISOString()
         }
       });
@@ -106,10 +147,12 @@ Deno.serve(async (req) => {
         summary: {
           totalStakers: stakers.length,
           totalRewards: totalRewardsDistributed,
+          totalWeightedShares,
           averageReward: totalRewardsDistributed / stakers.length,
           vaultBalance: vaultSOL,
-          rewardRate: `${WEEKLY_REWARD_RATE * 100}% weekly`,
-          vaultPercentage: '90%'
+          weeklyRewardPool: weeklyRewardPool,
+          vaultPercentage: '50%',
+          loyaltyBoostEnabled: true
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
