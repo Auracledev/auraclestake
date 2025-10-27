@@ -86,20 +86,15 @@ Deno.serve(async (req) => {
         new Uint8Array(JSON.parse(vaultPrivateKey))
       );
 
-      // Deserialize the transaction
+      // Deserialize the UNSIGNED transaction
       const transaction = Transaction.from(
         Buffer.from(serializedTransaction, 'base64')
       );
 
-      // Add vault signature (user already signed)
-      transaction.partialSign(vaultKeypair);
+      // Sign with vault key (vault is the authority for the transfer)
+      transaction.sign(vaultKeypair);
 
-      // Verify transaction has all required signatures
-      if (!transaction.verifySignatures()) {
-        throw new Error('Transaction signature verification failed');
-      }
-
-      // Send the fully signed transaction
+      // Send the signed transaction
       signature = await connection.sendRawTransaction(
         transaction.serialize(),
         {
