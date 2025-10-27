@@ -7,6 +7,7 @@ import StakeActions from './StakeActions';
 import WebhookStatus from './WebhookStatus';
 import ManualPayout from './ManualPayout';
 import RewardsCard from './RewardsCard';
+import BoostLevelCard from './BoostLevelCard';
 import { Users, Coins, Wallet, TrendingUp, Shield } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { supabase, ADMIN_WALLET } from '@/lib/supabase';
@@ -24,6 +25,7 @@ interface UserData {
   estimatedDailyRewards: string;
   pendingRewards: number;
   transactions: any[];
+  first_staked_at?: string;
 }
 
 export default function AuracleDashboard() {
@@ -43,6 +45,7 @@ export default function AuracleDashboard() {
     estimatedDailyRewards: '0',
     pendingRewards: 0,
     transactions: [],
+    first_staked_at: undefined,
   });
 
   const [loading, setLoading] = useState(true);
@@ -148,6 +151,7 @@ export default function AuracleDashboard() {
           estimatedDailyRewards: data.estimatedDailyRewards || '0',
           pendingRewards: data.pendingRewards || 0,
           transactions: data.transactions || [],
+          first_staked_at: data.staker?.first_staked_at,
         };
         console.log('Setting user data:', newUserData);
         setUserData(newUserData);
@@ -279,6 +283,7 @@ export default function AuracleDashboard() {
                     subtitle="Based on current pool"
                   />
                 </div>
+                <BoostLevelCard firstStakedAt={userData.first_staked_at} />
                 <RewardsCard 
                   pendingRewards={userData.pendingRewards}
                   estimatedDailyRewards={userData.estimatedDailyRewards}
@@ -366,7 +371,8 @@ export default function AuracleDashboard() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-              <div className="lg:col-span-2">
+              <div className="lg:col-span-2 space-y-6">
+                <BoostLevelCard firstStakedAt={userData.first_staked_at} />
                 <RewardsCard 
                   pendingRewards={userData.pendingRewards}
                   estimatedDailyRewards={userData.estimatedDailyRewards}

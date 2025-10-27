@@ -2,18 +2,19 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from "@shared/cors.ts";
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from 'npm:@solana/web3.js@1.87.6';
 import { getAccount, getAssociatedTokenAddress } from 'npm:@solana/spl-token@0.3.9';
-import { VAULT_WALLET, AURACLE_MINT } from "@shared/constants.ts";
+import { VAULT_ADDRESS, AURACLE_MINT } from "@shared/constants.ts";
 
 const MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
 const SECONDS_PER_WEEK = 7 * 24 * 60 * 60;
 const AURACLE_DECIMALS = 6;
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
   try {
+    // Handle CORS preflight
+    if (req.method === 'OPTIONS') {
+      return new Response('ok', { headers: corsHeaders });
+    }
+
     const { walletAddress } = await req.json();
 
     if (!walletAddress) {
@@ -98,44 +99,77 @@ Deno.serve(async (req) => {
     let rewardsPerSecond = 0;
 
     if (staker && staker.staked_amount > 0) {
-      const connection = new Connection(MAINNET_RPC, 'confirmed');
-      const vaultPublicKey = new PublicKey(VAULT_WALLET);
-      const mintPublicKey = new PublicKey(AURACLE_MINT);
+      try {
+        const connection = new Connection(MAINNET_RPC, 'confirmed');
+        const vaultPublicKey = new PublicKey(VAULT_ADDRESS);
+        const mintPublicKey = new PublicKey(AURACLE_MINT);
 
-      // Get real vault SOL balance from blockchain
-      const vaultBalance = await connection.getBalance(vaultPublicKey);
-      const vaultSOL = vaultBalance / LAMPORTS_PER_SOL;
+        // Get real vault SOL balance from blockchain
+        const vaultBalance = await connection.getBalance(vaultPublicKey);
+        const vaultSOL = vaultBalance / LAMPORTS_PER_SOL;
 
-      // Get total staked AURACLE from vault wallet on blockchain
-      const vaultTokenAccount = await getAssociatedTokenAddress(
-        mintPublicKey,
-        vaultPublicKey
-      );
-      const accountInfo = await getAccount(connection, vaultTokenAccount);
-      const totalStaked = Number(accountInfo.amount) / Math.pow(10, AURACLE_DECIMALS);
+        // Get total staked AURACLE from vault wallet on blockchain
+        const vaultTokenAccount = await getAssociatedTokenAddress(
+          mintPublicKey,
+          vaultPublicKey
+        );
+        
+        try {
+          const accountInfo = await getAccount(connection, vaultTokenAccount);
+          const totalStaked = Number(accountInfo.amount) / Math.pow(10, AURACLE_DECIMALS);
 
-      if (totalStaked > 0) {
-        // Use the user's DATABASE staked amount (not blockchain)
-        const userStakedAmount = parseFloat(staker.staked_amount);
-        const stakerShare = userStakedAmount / totalStaked;
-        
-        // Simple formula: (your_stake / total_stake) × vault_SOL × 50% distributed over 1 week
-        const weeklyVaultDistribution = vaultSOL * 0.5;
-        const userWeeklyReward = weeklyVaultDistribution * stakerShare;
-        
-        // Calculate per-second rate
-        rewardsPerSecond = userWeeklyReward / SECONDS_PER_WEEK;
-        const dailyReward = rewardsPerSecond * 86400;
-        
-        estimatedDailyRewards = dailyReward.toFixed(6);
-        
-        // Calculate pending rewards based on time since last update
-        const lastUpdated = new Date(staker.last_updated || staker.created_at);
-        const now = new Date();
-        const secondsSinceUpdate = (now.getTime() - lastUpdated.getTime()) / 1000;
-        
-        const accruedRewards = rewardsPerSecond * secondsSinceUpdate;
-        pendingRewards = parseFloat(staker.pending_rewards || 0) + accruedRewards;
+          console.log('=== REWARDS CALCULATION DEBUG ===');
+          console.log('Vault SOL balance:', vaultSOL);
+          console.log('Total AURACLE staked (blockchain):', totalStaked);
+          console.log('User staked amount (database):', staker.staked_amount);
+          console.log('User first_staked_at:', staker.first_staked_at);
+
+          if (totalStaked > 0) {
+            // Use the user's DATABASE staked amount (not blockchain)
+            const userStakedAmount = parseFloat(staker.staked_amount);
+            const stakerShare = userStakedAmount / totalStaked;
+            
+            console.log('Staker share:', stakerShare);
+            
+            // Simple formula: (your_stake / total_stake) × vault_SOL × 50% distributed over 1 week
+            const weeklyVaultDistribution = vaultSOL * 0.5;
+            const userWeeklyReward = weeklyVaultDistribution * stakerShare;
+            
+            console.log('Weekly vault distribution:', weeklyVaultDistribution);
+            console.log('User weekly reward:', userWeeklyReward);
+            
+            // Calculate per-second rate
+            rewardsPerSecond = userWeeklyReward / SECONDS_PER_WEEK;
+            const dailyReward = rewardsPerSecond * 86400;
+            
+            console.log('Daily reward:', dailyReward);
+            
+            estimatedDailyRewards = dailyReward.toFixed(6);
+            
+            // Calculate pending rewards based on time since last update
+            const lastUpdated = new Date(staker.last_updated || staker.created_at);
+            const now = new Date();
+            const secondsSinceUpdate = (now.getTime() - lastUpdated.getTime()) / 1000;
+            
+            const accruedRewards = rewardsPerSecond * secondsSinceUpdate;
+            pendingRewards = parseFloat(staker.pending_rewards || 0) + accruedRewards;
+            
+            // Update the database with new pending rewards and last_updated timestamp
+            await supabaseClient
+              .from('stakers')
+              .update({
+                pending_rewards: pendingRewards,
+                last_updated: now.toISOString()
+              })
+              .eq('wallet_address', walletAddress);
+          }
+        } catch (tokenError) {
+          // Token account doesn't exist yet (no stakes have been made)
+          console.log('Token account not found - no stakes yet:', tokenError.message);
+        }
+      } catch (blockchainError) {
+        console.error('Blockchain query error:', blockchainError);
+        // Continue without rewards calculation
       }
     }
 

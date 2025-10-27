@@ -113,6 +113,7 @@ export type Database = {
       stakers: {
         Row: {
           created_at: string | null
+          first_staked_at: string | null
           id: string
           last_updated: string | null
           pending_rewards: number
@@ -124,6 +125,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          first_staked_at?: string | null
           id?: string
           last_updated?: string | null
           pending_rewards?: number
@@ -135,6 +137,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          first_staked_at?: string | null
           id?: string
           last_updated?: string | null
           pending_rewards?: number

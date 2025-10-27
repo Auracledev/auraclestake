@@ -1,7 +1,7 @@
 export const SOLANA_RPC_URL = 'https://mainnet.helius-rpc.com/?api-key=e9ab9721-93fa-4533-b148-7e240bd38192';
 export const AURACLE_MINT = '5EoNPSEMcFMuzz3Fr7ho3TiweifUumLaBXMQpVZRpump';
 export const AURACLE_DECIMALS = 6;
-export const VAULT_ADDRESS = 'BqQGFqPvhMvhKqVXvJLjVYYvhqYvhqYvhqYvhqYvhqYv';
+export const VAULT_ADDRESS = '7NRCgd7Sr9JCnNF4HXPJ5CAvi5G6MCfkpJHyaD2HqEpP';
 
 // Security constants
 export const MAX_STAKE_AMOUNT = 10000000; // 10M AURACLE

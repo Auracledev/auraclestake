@@ -8,7 +8,7 @@ const STAKE_LOCK_DURATION = 120; // 120 seconds
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders, status: 200 });
   }
 
   try {
@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
       // Fetch current staker data AFTER lock is set
       const { data: existingStaker, error: fetchError } = await supabaseClient
         .from('stakers')
-        .select('*')
+        .select('staked_amount, first_staked_at')
         .eq('wallet_address', walletAddress)
         .maybeSingle();
 
@@ -134,62 +134,30 @@ Deno.serve(async (req) => {
         throw new Error(`Failed to fetch staker: ${fetchError.message}`);
       }
 
-      let newStakedAmount = 0;
+      const newStakedAmount = (parseFloat(existingStaker?.staked_amount || 0) + amount).toString();
+      const now = new Date().toISOString();
 
-      if (type === 'stake') {
-        newStakedAmount = (existingStaker?.staked_amount || 0) + parseFloat(amount);
-      } else if (type === 'unstake') {
-        const currentStaked = existingStaker?.staked_amount || 0;
-        if (parseFloat(amount) > currentStaked) {
-          throw new Error(`Insufficient staked balance. You have ${currentStaked} AURACLE staked.`);
-        }
-        newStakedAmount = Math.max(0, currentStaked - parseFloat(amount));
-      }
-
-      // Update or insert staker
       if (existingStaker) {
-        const updateData: any = { 
-          staked_amount: newStakedAmount,
-          last_updated: new Date().toISOString(),
-          pending_rewards: existingStaker.pending_rewards || 0
-        };
-        
-        // Keep existing first_staked_at when staking more (don't reset)
-        // It will only be reset on unstake
-        console.log('Updating existing staker - keeping first_staked_at:', existingStaker.first_staked_at);
-        
-        // Release stake lock after successful operation
-        if (type === 'stake') {
-          updateData.stake_locked_until = null;
-        }
-
-        const { error: updateError } = await supabaseClient
+        await supabaseClient
           .from('stakers')
-          .update(updateData)
+          .update({ 
+            staked_amount: newStakedAmount,
+            last_updated: now,
+            stake_locked_until: null,
+            first_staked_at: existingStaker.first_staked_at || now  // Preserve or set first_staked_at
+          })
           .eq('wallet_address', walletAddress);
-
-        if (updateError) {
-          console.error('Error updating staker:', updateError);
-          throw new Error(`Failed to update staker: ${updateError.message}`);
-        }
       } else {
-        // New staker - set first_staked_at to now
-        const firstStakedAt = new Date().toISOString();
-        console.log('Creating new staker with first_staked_at:', firstStakedAt);
-        
-        const { error: insertError } = await supabaseClient
+        await supabaseClient
           .from('stakers')
-          .insert({ 
+          .insert({
             wallet_address: walletAddress,
             staked_amount: newStakedAmount,
-            first_staked_at: firstStakedAt,
-            stake_locked_until: null
+            pending_rewards: 0,
+            first_staked_at: now,
+            last_updated: now,
+            created_at: now
           });
-
-        if (insertError) {
-          console.error('Error inserting staker:', insertError);
-          throw new Error(`Failed to insert staker: ${insertError.message}`);
-        }
       }
 
       operationSucceeded = true;

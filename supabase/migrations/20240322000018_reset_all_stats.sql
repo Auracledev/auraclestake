@@ -1,0 +1,17 @@
+-- Reset all staking data
+TRUNCATE TABLE stakers CASCADE;
+TRUNCATE TABLE transactions CASCADE;
+TRUNCATE TABLE rewards CASCADE;
+TRUNCATE TABLE platform_stats CASCADE;
+TRUNCATE TABLE webhook_logs CASCADE;
+TRUNCATE TABLE admin_actions CASCADE;
+TRUNCATE TABLE withdrawal_locks CASCADE;
+
+-- Reset any sequences if they exist
+ALTER SEQUENCE IF EXISTS stakers_id_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS transactions_id_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS rewards_id_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS platform_stats_id_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS webhook_logs_id_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS admin_actions_id_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS withdrawal_locks_id_seq RESTART WITH 1;
