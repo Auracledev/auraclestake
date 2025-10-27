@@ -1,77 +1,153 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Zap, AlertCircle } from "lucide-react";
-import { useState } from "react";
+import { AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { supabase } from "@/lib/supabase";
 
 interface ManualPayoutProps {
-  onTriggerPayout?: () => void;
+  onPayoutComplete?: () => void;
 }
 
-export default function ManualPayout({ onTriggerPayout = () => {} }: ManualPayoutProps) {
+export default function ManualPayout({ onPayoutComplete }: ManualPayoutProps) {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [lastPayout, setLastPayout] = useState("3 hours ago");
+  const [lastPayout, setLastPayout] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const handleTriggerPayout = async () => {
+  useEffect(() => {
+    fetchLastPayout();
+  }, []);
+
+  const fetchLastPayout = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch the most recent reward distribution
+      const { data, error } = await supabase
+        .from('rewards')
+        .select('distributed_at')
+        .order('distributed_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.error('Error fetching last payout:', error);
+        return;
+      }
+
+      if (data?.distributed_at) {
+        const payoutDate = new Date(data.distributed_at);
+        const now = new Date();
+        const diffMs = now.getTime() - payoutDate.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+
+        if (diffMins < 1) {
+          setLastPayout('Just now');
+        } else if (diffMins < 60) {
+          setLastPayout(`${diffMins} minute${diffMins > 1 ? 's' : ''} ago`);
+        } else if (diffHours < 24) {
+          setLastPayout(`${diffHours} hour${diffHours > 1 ? 's' : ''} ago`);
+        } else {
+          setLastPayout(`${diffDays} day${diffDays > 1 ? 's' : ''} ago`);
+        }
+      } else {
+        setLastPayout('Never');
+      }
+    } catch (error) {
+      console.error('Error fetching last payout:', error);
+      setLastPayout('Unknown');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleManualPayout = async () => {
     setIsProcessing(true);
-    await onTriggerPayout();
-    setLastPayout("Just now");
-    setTimeout(() => setIsProcessing(false), 2000);
+    try {
+      // Call the calculate-rewards edge function
+      const { data, error } = await supabase.functions.invoke('supabase-functions-calculate-rewards', {
+        body: { manual: true }
+      });
+
+      if (error) throw error;
+
+      // Refresh the last payout time
+      await fetchLastPayout();
+      
+      if (onPayoutComplete) {
+        onPayoutComplete();
+      }
+    } catch (error) {
+      console.error('Error processing manual payout:', error);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
-    <Card className="bg-gradient-to-br from-slate-900 to-slate-800 border-slate-700">
+    <Card className="bg-gradient-to-br from-purple-900/20 to-pink-900/20 border-purple-700/50">
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="text-white flex items-center gap-2">
-            <Zap className="h-5 w-5 text-yellow-400" />
-            Manual Payout
-          </CardTitle>
-          <Badge variant="outline" className="border-yellow-600 text-yellow-400">
-            Admin Only
-          </Badge>
+          <CardTitle className="text-white">Manual Payout</CardTitle>
+          <Badge className="bg-purple-600">Admin Only</Badge>
         </div>
         <CardDescription className="text-slate-400">
-          Trigger pro-rata SOL distribution manually
+          Trigger immediate reward distribution to all stakers
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 space-y-2">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 text-yellow-400 mt-0.5" />
-            <div className="text-sm text-slate-300">
-              <p className="font-medium">Before triggering:</p>
-              <ul className="list-disc list-inside text-slate-400 mt-1 space-y-1">
-                <li>Ensure vault has sufficient SOL balance</li>
-                <li>Verify all stakers are eligible</li>
-                <li>Check transaction logs for errors</li>
-              </ul>
-            </div>
+        <Alert className="bg-yellow-900/20 border-yellow-700/50">
+          <AlertCircle className="h-4 w-4 text-yellow-400" />
+          <AlertDescription className="text-yellow-200 text-sm">
+            This will calculate and distribute rewards to all active stakers based on their current stake.
+          </AlertDescription>
+        </Alert>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-slate-300">
+            <CheckCircle2 className="h-4 w-4 text-green-400" />
+            <span>Verify vault has sufficient SOL balance</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-slate-300">
+            <CheckCircle2 className="h-4 w-4 text-green-400" />
+            <span>Confirm all stakers are eligible</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-slate-300">
+            <CheckCircle2 className="h-4 w-4 text-green-400" />
+            <span>Review transaction logs after completion</span>
           </div>
         </div>
 
-        <div className="flex justify-between text-sm">
-          <span className="text-slate-400">Last Manual Payout:</span>
-          <span className="text-white font-medium">{lastPayout}</span>
+        <div className="pt-2 border-t border-slate-700">
+          <div className="flex items-center justify-between text-sm mb-3">
+            <span className="text-slate-400">Last Payout:</span>
+            <span className="text-white font-medium">
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin inline" />
+              ) : (
+                lastPayout || 'Never'
+              )}
+            </span>
+          </div>
+          
+          <Button
+            onClick={handleManualPayout}
+            disabled={isProcessing || loading}
+            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Processing Payout...
+              </>
+            ) : (
+              'Trigger Manual Payout'
+            )}
+          </Button>
         </div>
-
-        <Button 
-          onClick={handleTriggerPayout}
-          disabled={isProcessing}
-          className="w-full bg-yellow-600 hover:bg-yellow-700 text-black font-semibold"
-        >
-          {isProcessing ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black mr-2" />
-              Processing...
-            </>
-          ) : (
-            <>
-              <Zap className="h-4 w-4 mr-2" />
-              Trigger Payout Now
-            </>
-          )}
-        </Button>
       </CardContent>
     </Card>
   );
