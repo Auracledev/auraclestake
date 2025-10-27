@@ -292,24 +292,24 @@ export default function AuracleDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <StatCard
                 title="Vault SOL Balance"
-                value={`${platformStats.vault_sol_balance.toFixed(2)} SOL`}
+                value={`${(platformStats.vault_sol_balance || 0).toFixed(2)} SOL`}
                 subtitle="Available for rewards"
                 icon={<Wallet className="h-4 w-4 text-green-400" />}
               />
               <StatCard
                 title="Weekly Reward Pool"
-                value={`${platformStats.weekly_reward_pool.toFixed(2)} SOL`}
+                value={`${(platformStats.weekly_reward_pool || 0).toFixed(2)} SOL`}
                 subtitle="Distributed pro-rata"
                 icon={<TrendingUp className="h-4 w-4 text-yellow-400" />}
               />
               <StatCard
                 title="Your Staked AURACLE"
-                value={formatAuracle(userData.staked_amount)}
+                value={formatAuracle(userData.staked_amount || 0)}
                 subtitle="Admin wallet stake"
               />
               <StatCard
                 title="Your Pending Rewards"
-                value={`${userData.pendingRewards.toFixed(4)} SOL`}
+                value={`${(userData.pendingRewards || 0).toFixed(4)} SOL`}
                 subtitle="Available to withdraw"
               />
             </div>

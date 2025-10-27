@@ -204,7 +204,7 @@ Deno.serve(async (req) => {
     } else {
       await supabase
         .from('stakers')
-        .update({ staked_amount: newAmount, updated_at: new Date().toISOString() })
+        .update({ staked_amount: newAmount, last_updated: new Date().toISOString() })
         .eq('wallet_address', walletAddress);
     }
 

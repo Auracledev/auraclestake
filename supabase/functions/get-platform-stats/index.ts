@@ -12,12 +12,22 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
-    const { data: stats, error } = await supabaseClient
-      .from('platform_stats')
-      .select('*')
-      .single();
+    // Calculate stats from stakers table
+    const { data: stakers, error: stakersError } = await supabaseClient
+      .from('stakers')
+      .select('staked_amount');
 
-    if (error) throw error;
+    if (stakersError) throw stakersError;
+
+    const totalStaked = stakers?.reduce((sum, s) => sum + s.staked_amount, 0) || 0;
+    const numberOfStakers = stakers?.length || 0;
+
+    const stats = {
+      total_staked: totalStaked,
+      number_of_stakers: numberOfStakers,
+      vault_sol_balance: 0, // This would need to be fetched from Solana
+      daily_reward_pool: 0
+    };
 
     return new Response(
       JSON.stringify({ stats }),
