@@ -109,11 +109,11 @@ export async function createUnstakeTransaction(
     walletPublicKey
   );
 
-  // Create simple transaction with ONLY the transfer instruction
+  // Create transfer instruction with vault as authority
   const transferInstruction = createTransferInstruction(
     fromTokenAccount,
     toTokenAccount,
-    vaultPublicKey,
+    vaultPublicKey, // vault is the authority
     BigInt(Math.floor(amount * Math.pow(10, AURACLE_DECIMALS))),
     [],
     TOKEN_PROGRAM_ID
@@ -123,7 +123,7 @@ export async function createUnstakeTransaction(
   
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
   transaction.recentBlockhash = blockhash;
-  transaction.feePayer = walletPublicKey;
+  transaction.feePayer = walletPublicKey; // User pays fees
   transaction.lastValidBlockHeight = lastValidBlockHeight;
   
   return transaction;

@@ -86,13 +86,28 @@ Deno.serve(async (req) => {
         new Uint8Array(JSON.parse(vaultPrivateKey))
       );
 
+      // Deserialize the transaction
       const transaction = Transaction.from(
         Buffer.from(serializedTransaction, 'base64')
       );
 
+      // Add vault signature (user already signed)
       transaction.partialSign(vaultKeypair);
 
-      signature = await connection.sendRawTransaction(transaction.serialize());
+      // Verify transaction has all required signatures
+      if (!transaction.verifySignatures()) {
+        throw new Error('Transaction signature verification failed');
+      }
+
+      // Send the fully signed transaction
+      signature = await connection.sendRawTransaction(
+        transaction.serialize(),
+        {
+          skipPreflight: false,
+          preflightCommitment: 'confirmed'
+        }
+      );
+      
       await connection.confirmTransaction(signature, 'confirmed');
 
       // Check if this transaction was already recorded
@@ -177,6 +192,7 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
+    console.error('Unstake error:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

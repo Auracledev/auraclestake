@@ -110,7 +110,9 @@ Deno.serve(async (req) => {
             .update({ 
               staked_amount: newStakedAmount,
               last_updated: new Date().toISOString(),
-              version: currentVersion + 1
+              version: currentVersion + 1,
+              // Preserve pending_rewards when updating staked amount
+              pending_rewards: existingStaker.pending_rewards || 0
             })
             .eq('wallet_address', walletAddress)
             .eq('version', currentVersion)
