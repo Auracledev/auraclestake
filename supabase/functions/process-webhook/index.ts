@@ -1,6 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { corsHeaders } from '@shared/cors.ts';
 
+const VAULT_WALLET = 'HqQvCfvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv'; // Replace with your actual vault wallet
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders, status: 200 });
@@ -29,6 +31,7 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_KEY') ?? ''
     );
 
+    // Log all webhook events
     await supabaseClient
       .from('webhook_logs')
       .insert({
@@ -37,6 +40,8 @@ Deno.serve(async (req) => {
         processed: false
       });
 
+    // Only process SOL transfers to vault (for rewards/deposits)
+    // AURACLE stakes are handled by the frontend via record-stake function
     if (payload.type === 'TRANSFER' && payload.nativeTransfers) {
       for (const transfer of payload.nativeTransfers) {
         if (transfer.toUserAccount === VAULT_WALLET) {
@@ -44,7 +49,7 @@ Deno.serve(async (req) => {
           
           const { data: stats } = await supabaseClient
             .from('platform_stats')
-            .select('vault_sol_balance')
+            .select('*')
             .single();
 
           const newBalance = (stats?.vault_sol_balance || 0) + solAmount;
@@ -70,6 +75,7 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
+    console.error('Webhook error:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -248,6 +248,18 @@ Deno.serve(async (req) => {
 
       console.log('Transaction sent:', txSignature);
 
+      // Wait for confirmation using polling
+      console.log('Waiting for transaction confirmation...');
+      const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+      
+      await connection.confirmTransaction({
+        signature: txSignature,
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight
+      }, 'confirmed');
+
+      console.log('Transaction confirmed on-chain');
+
       // Update database with version check (optimistic locking)
       console.log('Updating staker balance from', stakerData.staked_amount, 'to', stakerData.staked_amount - amount);
       const newAmount = stakerData.staked_amount - amount;
