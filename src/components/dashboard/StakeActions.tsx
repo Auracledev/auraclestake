@@ -197,11 +197,11 @@ export default function StakeActions({
       if (response.error) {
         console.error('Edge function error:', response.error);
         
-        // Try to get the response text
+        // Try to get the response text from the Response object
         let errorMessage = 'Unknown error';
         try {
-          if (response.error.context?.body) {
-            const bodyText = await response.error.context.body.text();
+          if (response.response) {
+            const bodyText = await response.response.text();
             console.log('Error body:', bodyText);
             const errorData = JSON.parse(bodyText);
             errorMessage = errorData.error || errorMessage;
