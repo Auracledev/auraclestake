@@ -31,7 +31,7 @@ export default function WebhookStatus({ isActive = true, lastPing = "2 minutes a
           </Badge>
         </div>
         <CardDescription className="text-slate-400">
-          Monitoring SOL deposits to vault wallet
+          Monitoring AURACLE token stakes to vault wallet
         </CardDescription>
       </CardHeader>
       <CardContent>
