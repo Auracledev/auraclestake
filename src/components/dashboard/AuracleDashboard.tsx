@@ -152,9 +152,11 @@ export default function AuracleDashboard() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                <Coins className="h-6 w-6 text-white" />
-              </div>
+              <img 
+                src="https://i.imgur.com/LEBBbsS.png" 
+                alt="Auracle Logo" 
+                className="h-10 w-10 rounded-lg object-contain"
+              />
               <div>
                 <h1 className="text-2xl font-bold text-white">Auracle Staking</h1>
                 <p className="text-sm text-slate-400">Automated SOL Rewards Distribution</p>
