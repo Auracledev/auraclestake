@@ -51,9 +51,9 @@ Deno.serve(async (req) => {
       const stakedAmount = parseFloat(staker.staked_amount);
       const stakerShare = stakedAmount / totalStaked;
       
-      // Calculate reward: 0.5% of staked amount, distributed proportionally from vault
+      // Calculate reward: 0.5% of staked amount, distributed proportionally from 90% of vault
       const baseReward = stakedAmount * WEEKLY_REWARD_RATE;
-      const rewardInSOL = (baseReward / totalStaked) * vaultSOL * 0.1; // Use 10% of vault for weekly rewards
+      const rewardInSOL = (baseReward / totalStaked) * vaultSOL * 0.9; // Use 90% of vault for weekly rewards
       
       const newPendingRewards = parseFloat(staker.pending_rewards || 0) + rewardInSOL;
       
@@ -94,6 +94,7 @@ Deno.serve(async (req) => {
           totalRewards: totalRewardsDistributed,
           vaultBalance: vaultSOL,
           rewardRate: `${WEEKLY_REWARD_RATE * 100}%`,
+          vaultPercentage: '90%',
           timestamp: new Date().toISOString()
         }
       });
@@ -107,7 +108,8 @@ Deno.serve(async (req) => {
           totalRewards: totalRewardsDistributed,
           averageReward: totalRewardsDistributed / stakers.length,
           vaultBalance: vaultSOL,
-          rewardRate: `${WEEKLY_REWARD_RATE * 100}% weekly`
+          rewardRate: `${WEEKLY_REWARD_RATE * 100}% weekly`,
+          vaultPercentage: '90%'
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -254,6 +254,7 @@ export default function AuracleDashboard() {
                 </div>
                 <RewardsCard 
                   pendingRewards={userData.pendingRewards}
+                  estimatedDailyRewards={userData.estimatedDailyRewards}
                   onWithdraw={handleWithdrawRewards}
                 />
                 <TransactionHistory transactions={userData.transactions.map(tx => ({

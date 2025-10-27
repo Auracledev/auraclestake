@@ -4,6 +4,7 @@ import { Connection, PublicKey, Transaction, Keypair, SystemProgram, LAMPORTS_PE
 import { VAULT_WALLET } from "@shared/constants.ts";
 
 const MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
+const SECONDS_PER_WEEK = 7 * 24 * 60 * 60;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -22,9 +23,10 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_KEY') ?? ''
     );
 
+    // Get staker data with staked amount
     const { data: staker, error: stakerError } = await supabaseClient
       .from('stakers')
-      .select('pending_rewards')
+      .select('*')
       .eq('wallet_address', walletAddress)
       .single();
 
@@ -32,8 +34,45 @@ Deno.serve(async (req) => {
       throw new Error('Staker not found');
     }
 
-    const pendingRewards = parseFloat(staker.pending_rewards);
-    if (pendingRewards <= 0) {
+    // Calculate real-time accrued rewards
+    let totalRewards = parseFloat(staker.pending_rewards || 0);
+
+    if (staker.staked_amount > 0) {
+      // Get vault balance
+      const connection = new Connection(MAINNET_RPC, 'confirmed');
+      const vaultPublicKey = new PublicKey(VAULT_WALLET);
+      const vaultBalance = await connection.getBalance(vaultPublicKey);
+      const vaultSOL = vaultBalance / LAMPORTS_PER_SOL;
+
+      // Get total staked
+      const { data: allStakers } = await supabaseClient
+        .from('stakers')
+        .select('staked_amount')
+        .gt('staked_amount', 0);
+
+      const totalStaked = allStakers?.reduce((sum, s) => sum + parseFloat(s.staked_amount), 0) || 0;
+
+      if (totalStaked > 0) {
+        const stakedAmount = parseFloat(staker.staked_amount);
+        const stakerShare = stakedAmount / totalStaked;
+        
+        // Calculate rewards per second
+        const weeklyVaultDistribution = vaultSOL * 0.5;
+        const userWeeklyReward = weeklyVaultDistribution * stakerShare;
+        const rewardsPerSecond = userWeeklyReward / SECONDS_PER_WEEK;
+        
+        // Calculate time since last update
+        const lastUpdated = new Date(staker.last_updated || staker.created_at);
+        const now = new Date();
+        const secondsSinceUpdate = (now.getTime() - lastUpdated.getTime()) / 1000;
+        
+        // Add accrued rewards
+        const accruedRewards = rewardsPerSecond * secondsSinceUpdate;
+        totalRewards += accruedRewards;
+      }
+    }
+
+    if (totalRewards <= 0) {
       throw new Error('No rewards available to withdraw');
     }
 
@@ -48,7 +87,7 @@ Deno.serve(async (req) => {
     );
 
     const userPublicKey = new PublicKey(walletAddress);
-    const lamports = Math.floor(pendingRewards * LAMPORTS_PER_SOL);
+    const lamports = Math.floor(totalRewards * LAMPORTS_PER_SOL);
 
     const transaction = new Transaction().add(
       SystemProgram.transfer({
@@ -66,6 +105,7 @@ Deno.serve(async (req) => {
     const signature = await connection.sendRawTransaction(transaction.serialize());
     await connection.confirmTransaction(signature, 'confirmed');
 
+    // Reset pending rewards and update timestamp
     await supabaseClient
       .from('stakers')
       .update({ 
@@ -79,7 +119,7 @@ Deno.serve(async (req) => {
       .insert({
         wallet_address: walletAddress,
         type: 'reward',
-        amount: pendingRewards,
+        amount: totalRewards,
         token: 'SOL',
         tx_signature: signature,
         status: 'completed'
@@ -89,7 +129,7 @@ Deno.serve(async (req) => {
       .from('rewards')
       .insert({
         wallet_address: walletAddress,
-        amount: pendingRewards,
+        amount: totalRewards,
         distribution_date: new Date().toISOString().split('T')[0],
         tx_signature: signature
       });
@@ -98,7 +138,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         signature,
-        amount: pendingRewards
+        amount: totalRewards
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
