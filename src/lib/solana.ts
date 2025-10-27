@@ -54,42 +54,24 @@ export async function createStakeTransaction(
     throw new Error('Token account not found. Please ensure you have AURACLE tokens in your wallet.');
   }
 
-  const instructions: TransactionInstruction[] = [];
-  
-  // 1. Set compute unit limit (helps with simulation)
-  instructions.push(
-    ComputeBudgetProgram.setComputeUnitLimit({
-      units: 100_000
-    })
+  // Create simple transaction with ONLY the transfer instruction
+  // No compute budget instructions that might trigger security warnings
+  const transferInstruction = createTransferInstruction(
+    fromTokenAccount,
+    toTokenAccount,
+    walletPublicKey,
+    BigInt(Math.floor(amount * Math.pow(10, AURACLE_DECIMALS))),
+    [],
+    TOKEN_PROGRAM_ID
   );
   
-  // 2. Set compute unit price (priority fee)
-  instructions.push(
-    ComputeBudgetProgram.setComputeUnitPrice({
-      microLamports: 5000
-    })
-  );
+  const transaction = new Transaction().add(transferInstruction);
   
-  // 3. Main transfer instruction
-  instructions.push(
-    createTransferInstruction(
-      fromTokenAccount,
-      toTokenAccount,
-      walletPublicKey,
-      BigInt(Math.floor(amount * Math.pow(10, AURACLE_DECIMALS))),
-      [],
-      TOKEN_PROGRAM_ID
-    )
-  );
-  
-  // Create transaction with proper structure
-  const transaction = new Transaction();
-  transaction.add(...instructions);
-  
-  // Get latest blockhash with confirmed commitment
-  const { blockhash } = await connection.getLatestBlockhash('confirmed');
+  // Get latest blockhash
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = walletPublicKey;
+  transaction.lastValidBlockHeight = lastValidBlockHeight;
   
   return transaction;
 }
@@ -111,40 +93,22 @@ export async function createUnstakeTransaction(
     walletPublicKey
   );
 
-  const instructions: TransactionInstruction[] = [];
-  
-  // 1. Set compute unit limit
-  instructions.push(
-    ComputeBudgetProgram.setComputeUnitLimit({
-      units: 100_000
-    })
+  // Create simple transaction with ONLY the transfer instruction
+  const transferInstruction = createTransferInstruction(
+    fromTokenAccount,
+    toTokenAccount,
+    vaultPublicKey,
+    BigInt(Math.floor(amount * Math.pow(10, AURACLE_DECIMALS))),
+    [],
+    TOKEN_PROGRAM_ID
   );
   
-  // 2. Set compute unit price
-  instructions.push(
-    ComputeBudgetProgram.setComputeUnitPrice({
-      microLamports: 5000
-    })
-  );
+  const transaction = new Transaction().add(transferInstruction);
   
-  // 3. Main transfer instruction
-  instructions.push(
-    createTransferInstruction(
-      fromTokenAccount,
-      toTokenAccount,
-      vaultPublicKey,
-      BigInt(Math.floor(amount * Math.pow(10, AURACLE_DECIMALS))),
-      [],
-      TOKEN_PROGRAM_ID
-    )
-  );
-  
-  const transaction = new Transaction();
-  transaction.add(...instructions);
-  
-  const { blockhash } = await connection.getLatestBlockhash('confirmed');
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = walletPublicKey;
+  transaction.lastValidBlockHeight = lastValidBlockHeight;
   
   return transaction;
 }
