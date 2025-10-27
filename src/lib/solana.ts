@@ -10,6 +10,7 @@ import {
 import { 
   getAssociatedTokenAddress, 
   createTransferInstruction,
+  createAssociatedTokenAccountInstruction,
   TOKEN_PROGRAM_ID,
   getAccount
 } from '@solana/spl-token';
@@ -54,8 +55,23 @@ export async function createStakeTransaction(
     throw new Error('Token account not found. Please ensure you have AURACLE tokens in your wallet.');
   }
 
-  // Create simple transaction with ONLY the transfer instruction
-  // No compute budget instructions that might trigger security warnings
+  const transaction = new Transaction();
+
+  // Check if vault token account exists, if not create it
+  try {
+    await getAccount(connection, toTokenAccount);
+  } catch (error) {
+    // Account doesn't exist, add instruction to create it
+    const createAccountIx = createAssociatedTokenAccountInstruction(
+      walletPublicKey, // payer
+      toTokenAccount, // account to create
+      vaultPublicKey, // owner
+      mintPublicKey // mint
+    );
+    transaction.add(createAccountIx);
+  }
+
+  // Add transfer instruction
   const transferInstruction = createTransferInstruction(
     fromTokenAccount,
     toTokenAccount,
@@ -65,7 +81,7 @@ export async function createStakeTransaction(
     TOKEN_PROGRAM_ID
   );
   
-  const transaction = new Transaction().add(transferInstruction);
+  transaction.add(transferInstruction);
   
   // Get latest blockhash
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
