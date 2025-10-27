@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
     // Verify user has enough staked
     const { data: stakerData, error: stakerError } = await supabase
       .from('stakers')
-      .select('staked_amount')
+      .select('staked_amount, version')
       .eq('wallet_address', walletAddress)
       .single();
 
@@ -195,28 +195,52 @@ Deno.serve(async (req) => {
     console.log('Transaction confirmed:', txSignature);
 
     // Update database
+    console.log('Updating staker balance from', stakerData.staked_amount, 'to', stakerData.staked_amount - amount);
     const newAmount = stakerData.staked_amount - amount;
+    
     if (newAmount === 0) {
-      await supabase
+      console.log('Deleting staker record (balance is 0)');
+      const { error: deleteError } = await supabase
         .from('stakers')
         .delete()
         .eq('wallet_address', walletAddress);
+      
+      if (deleteError) {
+        console.error('Error deleting staker:', deleteError);
+        throw new Error(`Failed to update database: ${deleteError.message}`);
+      }
     } else {
-      await supabase
+      console.log('Updating staker balance to:', newAmount);
+      const { error: updateError } = await supabase
         .from('stakers')
-        .update({ staked_amount: newAmount, last_updated: new Date().toISOString() })
+        .update({ 
+          staked_amount: newAmount, 
+          last_updated: new Date().toISOString(),
+          version: stakerData.version + 1 
+        })
         .eq('wallet_address', walletAddress);
+      
+      if (updateError) {
+        console.error('Error updating staker:', updateError);
+        throw new Error(`Failed to update database: ${updateError.message}`);
+      }
     }
 
     // Record transaction
-    await supabase.from('transactions').insert({
+    console.log('Recording transaction...');
+    const { error: txError } = await supabase.from('transactions').insert({
       wallet_address: walletAddress,
       type: 'unstake',
       amount,
       token: 'AURACLE',
-      signature: txSignature,
+      tx_signature: txSignature,
       status: 'completed'
     });
+    
+    if (txError) {
+      console.error('Error recording transaction:', txError);
+      throw new Error(`Failed to record transaction: ${txError.message}`);
+    }
 
     console.log('Database updated successfully');
 
