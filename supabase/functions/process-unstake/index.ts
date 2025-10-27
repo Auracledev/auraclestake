@@ -17,7 +17,6 @@ Deno.serve(async (req) => {
     const bodyText = await req.text();
     console.log('Raw request body:', bodyText);
     console.log('Body length:', bodyText.length);
-    console.log('First 50 chars:', bodyText.substring(0, 50));
     
     // Parse the JSON
     let body;
@@ -34,17 +33,29 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    
-    const { walletAddress, amount, serializedTransaction } = body;
-    
-    console.log('Parsed request:', { walletAddress, amount, txLength: serializedTransaction?.length });
 
-    if (!walletAddress || !amount || !serializedTransaction) {
+    const { walletAddress, amount, serializedTransaction, signature, message } = body;
+    
+    console.log('Parsed request:', { walletAddress, amount, hasSignature: !!signature, hasMessage: !!message });
+
+    // Verify wallet signature
+    if (!signature || !message) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields' }),
+        JSON.stringify({ error: 'Missing signature or message for verification' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    const isValidSignature = await verifyWalletSignature(walletAddress, signature, message);
+    if (!isValidSignature) {
+      console.error('Invalid wallet signature');
+      return new Response(
+        JSON.stringify({ error: 'Invalid wallet signature' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Wallet signature verified successfully');
 
     // Convert amount from string to number
     const amountNum = parseFloat(amount);

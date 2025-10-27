@@ -176,7 +176,17 @@ export default function StakeActions({
 
     setIsUnstaking(true);
     try {
-      // Create transaction but DON'T sign it - backend will handle signing with vault key
+      // Step 1: Request wallet signature for verification
+      const message = `Auracle Staking - Unstake Request\nWallet: ${publicKey.toString()}\nAmount: ${amount} AURACLE\nTimestamp: ${Date.now()}`;
+      const messageBytes = new TextEncoder().encode(message);
+      
+      // Sign the message with Phantom
+      const signedMessage = await window.solana.signMessage(messageBytes, 'utf8');
+      const signature = btoa(String.fromCharCode(...signedMessage.signature));
+      
+      console.log('Wallet signature obtained');
+      
+      // Step 2: Create transaction but DON'T sign it - backend will handle signing with vault key
       const transaction = await createUnstakeTransaction(publicKey, amount);
       
       // Serialize transaction to base64 string
@@ -184,29 +194,27 @@ export default function StakeActions({
         transaction.serialize({ requireAllSignatures: false })
       ).toString('base64');
       
-      // Prepare payload - convert amount to string to avoid any number formatting issues
+      // Prepare payload with signature verification
       const payload = {
         walletAddress: publicKey.toString(),
-        amount: String(amount), // Convert to string without toFixed to preserve exact value
-        serializedTransaction: serializedTx
+        amount: String(amount),
+        serializedTransaction: serializedTx,
+        signature,
+        message
       };
       
-      console.log('Sending unstake request:', payload);
-      console.log('Amount type:', typeof payload.amount, 'Value:', payload.amount);
-      console.log('Payload JSON:', JSON.stringify(payload));
+      console.log('Sending unstake request with signature verification');
       
-      // Send UNSIGNED transaction to backend
+      // Send to backend with signature
       const response = await supabase.functions.invoke('supabase-functions-process-unstake', {
         body: payload
       });
 
       console.log('Full response:', response);
 
-      // Try to read the response body for error details
       if (response.error) {
         console.error('Edge function error:', response.error);
         
-        // Try to get the response text from the Response object
         let errorMessage = 'Unknown error';
         try {
           if (response.response) {
