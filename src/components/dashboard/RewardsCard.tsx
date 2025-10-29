@@ -4,34 +4,31 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Coins, Loader2, TrendingUp, AlertTriangle } from "lucide-react";
 import { useState, useEffect } from "react";
-import { useWallet } from '@solana/wallet-adapter-react';
 
 interface RewardsCardProps {
   pendingRewards?: number;
   estimatedDailyRewards?: string;
+  rewardsPerSecond?: number;
   onWithdraw?: () => Promise<void>;
 }
 
 export default function RewardsCard({ 
   pendingRewards = 0, 
   estimatedDailyRewards = "0",
+  rewardsPerSecond = 0,
   onWithdraw = async () => {} 
 }: RewardsCardProps) {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [liveRewards, setLiveRewards] = useState(pendingRewards);
 
-  // Calculate rewards per second with safety checks
-  const dailyRewards = parseFloat(estimatedDailyRewards || "0");
-  const rewardsPerSecond = isNaN(dailyRewards) ? 0 : dailyRewards / (24 * 60 * 60);
-
-  // Update live rewards every 10 seconds (reduced from 1 second)
+  // Update live rewards every 10 seconds using the rewardsPerSecond from backend
   useEffect(() => {
     setLiveRewards(pendingRewards || 0);
     
     if (rewardsPerSecond > 0) {
       const interval = setInterval(() => {
         setLiveRewards(prev => (prev || 0) + (rewardsPerSecond * 10));
-      }, 10000); // Changed from 1000ms to 10000ms
+      }, 10000); // Update every 10 seconds
 
       return () => clearInterval(interval);
     }
@@ -51,6 +48,7 @@ export default function RewardsCard({
 
   // Safe display value
   const displayRewards = isNaN(liveRewards) ? 0 : liveRewards;
+  const rewardsPerMinute = rewardsPerSecond * 60;
 
   return (
     <Card className="bg-gradient-to-br from-slate-900 to-slate-800 border-slate-700">
@@ -80,9 +78,9 @@ export default function RewardsCard({
             <span className="text-xl text-slate-400 flex-shrink-0">SOL</span>
           </div>
           <p className="text-sm text-slate-400">Pending Rewards</p>
-          {rewardsPerSecond > 0 && (
+          {rewardsPerMinute > 0 && (
             <p className="text-xs text-green-400 mt-2 tabular-nums">
-              +{(rewardsPerSecond * 60).toFixed(8)} SOL/min
+              +{rewardsPerMinute.toFixed(8)} SOL/min
             </p>
           )}
         </div>

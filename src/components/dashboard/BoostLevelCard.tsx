@@ -85,14 +85,14 @@ export default function BoostLevelCard({ firstStakedAt }: BoostLevelCardProps) {
           </Badge>
         </div>
         <CardDescription className="text-slate-400">
-          Continuous staking rewards multiplier
+          Your weighted stake multiplier
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Current Boost */}
         <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-slate-400">Current Multiplier</span>
+            <span className="text-sm text-slate-400">Active Multiplier</span>
             <span className="text-2xl font-bold text-green-400">
               {currentBoost.multiplier}x
             </span>
@@ -104,7 +104,7 @@ export default function BoostLevelCard({ firstStakedAt }: BoostLevelCardProps) {
           {boostPercentage !== "0" && (
             <div className="mt-2 flex items-center gap-1 text-xs text-green-400">
               <TrendingUp className="h-3 w-3" />
-              +{boostPercentage}% bonus rewards
+              +{boostPercentage}% weighted stake bonus
             </div>
           )}
         </div>

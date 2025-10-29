@@ -8,6 +8,26 @@ const MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
 const SECONDS_PER_WEEK = 7 * 24 * 60 * 60;
 const AURACLE_DECIMALS = 6;
 
+function calculateStakingDays(firstStakedAt: string): number {
+  const firstStaked = new Date(firstStakedAt);
+  const now = new Date();
+  const diffTime = Math.abs(now.getTime() - firstStaked.getTime());
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays;
+}
+
+function getLoyaltyMultiplier(firstStakedAt: string | null): number {
+  if (!firstStakedAt) return 1.0;
+  
+  const stakingDays = calculateStakingDays(firstStakedAt);
+  
+  if (stakingDays >= 90) return 1.5;
+  if (stakingDays >= 60) return 1.4;
+  if (stakingDays >= 30) return 1.3;
+  if (stakingDays >= 7) return 1.1;
+  return 1.0;
+}
+
 Deno.serve(async (req) => {
   try {
     // Handle CORS preflight
@@ -67,12 +87,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Log first_staked_at for debugging
-    if (staker) {
-      console.log('Staker first_staked_at:', staker.first_staked_at);
-      console.log('Full staker data:', JSON.stringify(staker, null, 2));
-    }
-
     // Fetch transactions
     const { data: transactions, error: txError } = await supabaseClient
       .from('transactions')
@@ -93,7 +107,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Calculate rewards using: USER'S DATABASE STAKED AMOUNT / TOTAL BLOCKCHAIN VAULT BALANCE
+    // Calculate rewards using WEIGHTED STAKES
     let estimatedDailyRewards = '0';
     let pendingRewards = 0;
     let rewardsPerSecond = 0;
@@ -118,20 +132,50 @@ Deno.serve(async (req) => {
           const accountInfo = await getAccount(connection, vaultTokenAccount);
           const totalStaked = Number(accountInfo.amount) / Math.pow(10, AURACLE_DECIMALS);
 
-          console.log('=== REWARDS CALCULATION DEBUG ===');
+          // Fetch ALL stakers to calculate total weighted stakes
+          const { data: allStakers, error: allStakersError } = await supabaseClient
+            .from('stakers')
+            .select('wallet_address, staked_amount, first_staked_at')
+            .gt('staked_amount', 0);
+
+          if (allStakersError) {
+            console.error('Error fetching all stakers:', allStakersError);
+            throw allStakersError;
+          }
+
+          console.log('=== WEIGHTED REWARDS CALCULATION DEBUG ===');
           console.log('Vault SOL balance:', vaultSOL);
           console.log('Total AURACLE staked (blockchain):', totalStaked);
-          console.log('User staked amount (database):', staker.staked_amount);
-          console.log('User first_staked_at:', staker.first_staked_at);
+          console.log('Number of active stakers:', allStakers?.length || 0);
 
-          if (totalStaked > 0) {
-            // Use the user's DATABASE staked amount (not blockchain)
+          // Calculate total weighted stakes
+          let totalWeightedStakes = 0;
+          for (const s of allStakers || []) {
+            const multiplier = getLoyaltyMultiplier(s.first_staked_at);
+            const weightedAmount = parseFloat(s.staked_amount) * multiplier;
+            totalWeightedStakes += weightedAmount;
+            
+            console.log(`Staker ${s.wallet_address.slice(0, 8)}... : ${s.staked_amount} AURACLE × ${multiplier}x = ${weightedAmount} weighted`);
+          }
+
+          console.log('Total weighted stakes:', totalWeightedStakes);
+
+          if (totalWeightedStakes > 0) {
+            // Calculate user's weighted stake
             const userStakedAmount = parseFloat(staker.staked_amount);
-            const stakerShare = userStakedAmount / totalStaked;
+            const userLoyaltyMultiplier = getLoyaltyMultiplier(staker.first_staked_at);
+            const userWeightedStake = userStakedAmount * userLoyaltyMultiplier;
             
-            console.log('Staker share:', stakerShare);
+            console.log('User staked amount:', userStakedAmount);
+            console.log('User loyalty multiplier:', userLoyaltyMultiplier);
+            console.log('User weighted stake:', userWeightedStake);
             
-            // Simple formula: (your_stake / total_stake) × vault_SOL × 50% distributed over 1 week
+            // Calculate share based on weighted stakes
+            const stakerShare = userWeightedStake / totalWeightedStakes;
+            
+            console.log('Staker weighted share:', stakerShare);
+            
+            // Formula: (weighted_stake / total_weighted_stakes) × vault_SOL × 50% distributed over 1 week
             const weeklyVaultDistribution = vaultSOL * 0.5;
             const userWeeklyReward = weeklyVaultDistribution * stakerShare;
             
@@ -142,6 +186,7 @@ Deno.serve(async (req) => {
             rewardsPerSecond = userWeeklyReward / SECONDS_PER_WEEK;
             const dailyReward = rewardsPerSecond * 86400;
             
+            console.log('Rewards per second:', rewardsPerSecond);
             console.log('Daily reward:', dailyReward);
             
             estimatedDailyRewards = dailyReward.toFixed(6);

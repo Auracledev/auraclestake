@@ -24,6 +24,7 @@ interface UserData {
   staked_amount: number;
   estimatedDailyRewards: string;
   pendingRewards: number;
+  rewardsPerSecond: number;
   transactions: any[];
   first_staked_at?: string;
 }
@@ -44,6 +45,7 @@ export default function AuracleDashboard() {
     staked_amount: 0,
     estimatedDailyRewards: '0',
     pendingRewards: 0,
+    rewardsPerSecond: 0,
     transactions: [],
     first_staked_at: undefined,
   });
@@ -160,6 +162,7 @@ export default function AuracleDashboard() {
           staked_amount: data.staker?.staked_amount || 0,
           estimatedDailyRewards: data.estimatedDailyRewards || '0',
           pendingRewards: data.pendingRewards || 0,
+          rewardsPerSecond: data.rewardsPerSecond || 0,
           transactions: data.transactions || [],
           first_staked_at: data.staker?.first_staked_at,
         };
@@ -316,6 +319,7 @@ export default function AuracleDashboard() {
                 <RewardsCard 
                   pendingRewards={userData.pendingRewards}
                   estimatedDailyRewards={userData.estimatedDailyRewards}
+                  rewardsPerSecond={userData.rewardsPerSecond}
                   onWithdraw={handleWithdraw}
                 />
                 <TransactionHistory transactions={userData.transactions.map(tx => ({
@@ -405,6 +409,7 @@ export default function AuracleDashboard() {
                 <RewardsCard 
                   pendingRewards={userData.pendingRewards}
                   estimatedDailyRewards={userData.estimatedDailyRewards}
+                  rewardsPerSecond={userData.rewardsPerSecond}
                   onWithdraw={handleWithdraw}
                 />
               </div>
