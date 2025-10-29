@@ -19,31 +19,6 @@ export default function RewardsCard({
   onWithdraw = async () => {} 
 }: RewardsCardProps) {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
-  const [liveRewards, setLiveRewards] = useState(pendingRewards);
-  const [actualRate, setActualRate] = useState(rewardsPerSecond);
-
-  // Track actual accumulation rate
-  useEffect(() => {
-    const startRewards = pendingRewards || 0;
-    const startTime = Date.now();
-    setLiveRewards(startRewards);
-    
-    if (rewardsPerSecond > 0) {
-      const interval = setInterval(() => {
-        const elapsed = (Date.now() - startTime) / 1000; // seconds elapsed
-        const accumulated = rewardsPerSecond * 10; // 10 seconds worth
-        setLiveRewards(startRewards + (rewardsPerSecond * elapsed));
-        
-        // Calculate actual rate based on accumulation
-        if (elapsed >= 10) {
-          const measuredRate = accumulated / 10;
-          setActualRate(measuredRate);
-        }
-      }, 10000); // Update every 10 seconds
-
-      return () => clearInterval(interval);
-    }
-  }, [pendingRewards, rewardsPerSecond]);
 
   const handleWithdraw = async () => {
     setIsWithdrawing(true);
@@ -57,9 +32,7 @@ export default function RewardsCard({
     }
   };
 
-  // Safe display value
-  const displayRewards = isNaN(liveRewards) ? 0 : liveRewards;
-  const rewardsPerMinute = actualRate * 60;
+  const rewardsPerMinute = rewardsPerSecond * 60;
 
   return (
     <Card className="bg-gradient-to-br from-slate-900 to-slate-800 border-slate-700">
@@ -69,7 +42,7 @@ export default function RewardsCard({
             <TrendingUp className="h-5 w-5 text-green-400" />
             SOL Rewards
           </CardTitle>
-          {displayRewards > 0 && (
+          {pendingRewards > 0 && (
             <Badge className="bg-green-600 animate-pulse">
               Live
             </Badge>
@@ -84,7 +57,7 @@ export default function RewardsCard({
           <div className="flex items-center justify-center gap-2 mb-2">
             <Coins className="h-6 w-6 text-green-400 flex-shrink-0" />
             <span className="text-4xl font-bold text-white tabular-nums leading-none">
-              {displayRewards.toFixed(6)}
+              {pendingRewards.toFixed(6)}
             </span>
             <span className="text-xl text-slate-400 flex-shrink-0">SOL</span>
           </div>
@@ -98,7 +71,7 @@ export default function RewardsCard({
 
         <Button 
           onClick={handleWithdraw}
-          disabled={isWithdrawing || displayRewards <= 0}
+          disabled={isWithdrawing || pendingRewards <= 0}
           className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold"
         >
           {isWithdrawing ? (
@@ -114,7 +87,7 @@ export default function RewardsCard({
           )}
         </Button>
 
-        {displayRewards > 0 && (
+        {pendingRewards > 0 && (
           <Alert className="bg-yellow-900/20 border-yellow-600/50">
             <AlertTriangle className="h-4 w-4 text-yellow-500" />
             <AlertDescription className="text-yellow-200 text-xs">
@@ -123,7 +96,7 @@ export default function RewardsCard({
           </Alert>
         )}
 
-        {displayRewards <= 0 && (
+        {pendingRewards <= 0 && (
           <p className="text-xs text-center text-slate-400">
             No rewards available yet. Keep staking to earn SOL!
           </p>
