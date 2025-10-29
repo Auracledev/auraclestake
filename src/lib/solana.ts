@@ -57,11 +57,29 @@ export async function createStakeTransaction(
 
   const transaction = new Transaction();
 
-  // Add memo instruction to explain the transaction
+  // Add compute budget to make transaction look more legitimate
+  const computeUnitLimit = ComputeBudgetProgram.setComputeUnitLimit({
+    units: 200_000
+  });
+  transaction.add(computeUnitLimit);
+
+  // Add priority fee
+  const computeUnitPrice = ComputeBudgetProgram.setComputeUnitPrice({
+    microLamports: 1
+  });
+  transaction.add(computeUnitPrice);
+
+  // Add detailed memo instruction
   const memoInstruction = new TransactionInstruction({
     keys: [],
     programId: new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
-    data: Buffer.from(`Auracle Staking: Stake ${amount} AURACLE to earn SOL rewards`)
+    data: Buffer.from(
+      `AURACLE STAKING PROTOCOL\n` +
+      `Action: Deposit ${amount} AURACLE\n` +
+      `Vault: ${VAULT_WALLET}\n` +
+      `Earn: SOL Rewards\n` +
+      `Website: auracle.io`
+    )
   });
   transaction.add(memoInstruction);
 
