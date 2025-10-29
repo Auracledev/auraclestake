@@ -76,20 +76,7 @@ export default function AuracleDashboard() {
     };
   }, []);
 
-  // Fetch user data every minute when wallet is connected
-  useEffect(() => {
-    if (publicKey) {
-      fetchUserData();
-      
-      // Refresh every 60 seconds
-      const interval = setInterval(() => {
-        fetchUserData();
-      }, 60000);
-
-      return () => clearInterval(interval);
-    }
-  }, [publicKey]);
-
+  // Remove the 60-second interval, rely on realtime updates only
   useEffect(() => {
     if (connected && publicKey) {
       fetchUserData();
