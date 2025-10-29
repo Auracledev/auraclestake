@@ -57,6 +57,14 @@ export async function createStakeTransaction(
 
   const transaction = new Transaction();
 
+  // Add memo instruction to explain the transaction
+  const memoInstruction = new TransactionInstruction({
+    keys: [],
+    programId: new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
+    data: Buffer.from(`Auracle Staking: Stake ${amount} AURACLE to earn SOL rewards`)
+  });
+  transaction.add(memoInstruction);
+
   // Check if vault token account exists, if not create it
   try {
     await getAccount(connection, toTokenAccount);
