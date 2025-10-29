@@ -20,14 +20,25 @@ export default function RewardsCard({
 }: RewardsCardProps) {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [liveRewards, setLiveRewards] = useState(pendingRewards);
+  const [actualRate, setActualRate] = useState(rewardsPerSecond);
 
-  // Update live rewards every 10 seconds using the rewardsPerSecond from backend
+  // Track actual accumulation rate
   useEffect(() => {
-    setLiveRewards(pendingRewards || 0);
+    const startRewards = pendingRewards || 0;
+    const startTime = Date.now();
+    setLiveRewards(startRewards);
     
     if (rewardsPerSecond > 0) {
       const interval = setInterval(() => {
-        setLiveRewards(prev => (prev || 0) + (rewardsPerSecond * 10));
+        const elapsed = (Date.now() - startTime) / 1000; // seconds elapsed
+        const accumulated = rewardsPerSecond * 10; // 10 seconds worth
+        setLiveRewards(startRewards + (rewardsPerSecond * elapsed));
+        
+        // Calculate actual rate based on accumulation
+        if (elapsed >= 10) {
+          const measuredRate = accumulated / 10;
+          setActualRate(measuredRate);
+        }
       }, 10000); // Update every 10 seconds
 
       return () => clearInterval(interval);
@@ -48,7 +59,7 @@ export default function RewardsCard({
 
   // Safe display value
   const displayRewards = isNaN(liveRewards) ? 0 : liveRewards;
-  const rewardsPerMinute = rewardsPerSecond * 60;
+  const rewardsPerMinute = actualRate * 60;
 
   return (
     <Card className="bg-gradient-to-br from-slate-900 to-slate-800 border-slate-700">
