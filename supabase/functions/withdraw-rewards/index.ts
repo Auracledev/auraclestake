@@ -6,7 +6,7 @@ import { Connection, PublicKey, Transaction, Keypair, SystemProgram, LAMPORTS_PE
 import { VAULT_ADDRESS, SIGNATURE_EXPIRY_MS } from "@shared/constants.ts";
 import nacl from 'npm:tweetnacl@1.0.3';
 
-const MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
+const MAINNET_RPC = 'https://mainnet.helius-rpc.com/?api-key=e9ab9721-93fa-4533-b148-7e240bd38192';
 const SECONDS_PER_WEEK = 7 * 24 * 60 * 60;
 const WITHDRAWAL_LOCK_TIMEOUT = 30000;
 

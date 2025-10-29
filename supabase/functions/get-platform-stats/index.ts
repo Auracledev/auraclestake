@@ -4,7 +4,7 @@ import { Connection, PublicKey, LAMPORTS_PER_SOL } from 'npm:@solana/web3.js@1.8
 import { getAccount, getAssociatedTokenAddress } from 'npm:@solana/spl-token@0.3.9';
 import { VAULT_WALLET, AURACLE_MINT } from "@shared/constants.ts";
 
-const MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
+const MAINNET_RPC = 'https://mainnet.helius-rpc.com/?api-key=e9ab9721-93fa-4533-b148-7e240bd38192';
 const AURACLE_DECIMALS = 6;
 
 Deno.serve(async (req) => {
