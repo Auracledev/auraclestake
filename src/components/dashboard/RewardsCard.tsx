@@ -24,14 +24,14 @@ export default function RewardsCard({
   const dailyRewards = parseFloat(estimatedDailyRewards || "0");
   const rewardsPerSecond = isNaN(dailyRewards) ? 0 : dailyRewards / (24 * 60 * 60);
 
-  // Update live rewards every second
+  // Update live rewards every 10 seconds (reduced from 1 second)
   useEffect(() => {
     setLiveRewards(pendingRewards || 0);
     
     if (rewardsPerSecond > 0) {
       const interval = setInterval(() => {
-        setLiveRewards(prev => (prev || 0) + rewardsPerSecond);
-      }, 1000);
+        setLiveRewards(prev => (prev || 0) + (rewardsPerSecond * 10));
+      }, 10000); // Changed from 1000ms to 10000ms
 
       return () => clearInterval(interval);
     }
