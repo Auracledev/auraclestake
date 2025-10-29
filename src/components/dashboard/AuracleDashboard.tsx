@@ -29,7 +29,7 @@ interface UserData {
 }
 
 export default function AuracleDashboard() {
-  const { publicKey, connected } = useWallet();
+  const { publicKey, connected, signMessage } = useWallet();
   const isAdmin = connected && publicKey?.toString() === ADMIN_WALLET;
   const { toast } = useToast();
 
@@ -162,9 +162,23 @@ export default function AuracleDashboard() {
   };
 
   const handleWithdraw = async () => {
-    if (!publicKey) return;
+    if (!publicKey || !signMessage) {
+      alert('Please connect your wallet first');
+      return;
+    }
     
     try {
+      // Create message to sign
+      const timestamp = new Date().toISOString();
+      const message = `Auracle Staking - Withdraw Rewards\nWallet: ${publicKey.toString()}\nTimestamp: ${timestamp}`;
+      
+      // Sign the message
+      const messageBytes = new TextEncoder().encode(message);
+      const signatureBytes = await signMessage(messageBytes);
+      const signature = btoa(String.fromCharCode(...signatureBytes));
+
+      console.log('Sending withdrawal request with signature...');
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/supabase-functions-withdraw-rewards`,
         {
@@ -173,7 +187,12 @@ export default function AuracleDashboard() {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
-          body: JSON.stringify({ walletAddress: publicKey.toString() }),
+          body: JSON.stringify({ 
+            walletAddress: publicKey.toString(),
+            message,
+            signature,
+            timestamp
+          }),
         }
       );
 

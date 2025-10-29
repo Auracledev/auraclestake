@@ -3,7 +3,8 @@ import { corsHeaders } from "@shared/cors.ts";
 import { checkRateLimit, RATE_LIMIT_CONFIGS } from "@shared/rate-limiter.ts";
 import { checkTransactionDuplicate } from "@shared/transaction-dedup.ts";
 import { Connection, PublicKey, Transaction, Keypair, SystemProgram, LAMPORTS_PER_SOL } from 'npm:@solana/web3.js@1.87.6';
-import { VAULT_WALLET } from "@shared/constants.ts";
+import { VAULT_ADDRESS, SIGNATURE_EXPIRY_MS } from "@shared/constants.ts";
+import nacl from 'npm:tweetnacl@1.0.3';
 
 const MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
 const SECONDS_PER_WEEK = 7 * 24 * 60 * 60;
@@ -23,10 +24,56 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    walletAddress = body.walletAddress;
+    const { walletAddress: wallet, message, signature, timestamp } = body;
+    walletAddress = wallet;
 
-    if (!walletAddress) {
-      throw new Error('Wallet address is required');
+    console.log('Withdrawal request:', { walletAddress, hasMessage: !!message, hasSignature: !!signature, timestamp });
+
+    if (!walletAddress || !message || !signature) {
+      throw new Error('Wallet address, message, and signature are required');
+    }
+
+    // Validate timestamp (5-minute expiry)
+    if (timestamp) {
+      const requestTime = new Date(timestamp).getTime();
+      const now = Date.now();
+      if (now - requestTime > SIGNATURE_EXPIRY_MS) {
+        console.error('Signature expired:', { timestamp, now, diff: now - requestTime });
+        return new Response(
+          JSON.stringify({ error: 'Signature expired. Please try again.' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // Verify wallet signature
+    try {
+      console.log('Verifying signature...');
+      const publicKey = new PublicKey(walletAddress);
+      const messageBytes = new TextEncoder().encode(message);
+      const signatureBytes = Uint8Array.from(atob(signature), c => c.charCodeAt(0));
+      
+      console.log('Message:', message);
+      console.log('Signature length:', signatureBytes.length);
+      
+      const verified = nacl.sign.detached.verify(
+        messageBytes,
+        signatureBytes,
+        publicKey.toBytes()
+      );
+
+      if (!verified) {
+        console.error('Signature verification failed - signature does not match');
+        throw new Error('Invalid signature');
+      }
+
+      console.log('Signature verified successfully');
+    } catch (verifyError) {
+      console.error('Signature verification failed:', verifyError);
+      return new Response(
+        JSON.stringify({ error: `Invalid wallet signature: ${verifyError.message}` }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Check rate limit
@@ -83,7 +130,7 @@ Deno.serve(async (req) => {
     }
 
     let totalRewards = 0;
-    let signature = '';
+    let txSignature = '';
     let currentVersion = 0;
 
     try {
@@ -102,7 +149,7 @@ Deno.serve(async (req) => {
 
       if (staker.staked_amount > 0) {
         const connection = new Connection(MAINNET_RPC, 'confirmed');
-        const vaultPublicKey = new PublicKey(VAULT_WALLET);
+        const vaultPublicKey = new PublicKey(VAULT_ADDRESS);
         const vaultBalance = await connection.getBalance(vaultPublicKey);
         const vaultSOL = vaultBalance / LAMPORTS_PER_SOL;
 
@@ -135,7 +182,7 @@ Deno.serve(async (req) => {
       }
 
       const connection = new Connection(MAINNET_RPC, 'confirmed');
-      const vaultPublicKey = new PublicKey(VAULT_WALLET);
+      const vaultPublicKey = new PublicKey(VAULT_ADDRESS);
       const vaultBalance = await connection.getBalance(vaultPublicKey);
       const vaultSOL = vaultBalance / LAMPORTS_PER_SOL;
 
@@ -146,6 +193,23 @@ Deno.serve(async (req) => {
         throw new Error(`Insufficient vault balance. Vault has ${vaultSOL.toFixed(4)} SOL but needs ${requiredSOL.toFixed(4)} SOL (including gas fees)`);
       }
 
+      // CRITICAL FIX: Update database FIRST before sending SOL
+      const { error: updateError } = await supabaseClient
+        .from('stakers')
+        .update({ 
+          pending_rewards: 0,
+          last_updated: new Date().toISOString(),
+          version: currentVersion + 1
+        })
+        .eq('wallet_address', walletAddress)
+        .eq('version', currentVersion);
+
+      if (updateError) {
+        console.error('Failed to update staker before withdrawal:', updateError);
+        throw new Error('Failed to process withdrawal. Please try again.');
+      }
+
+      // Now send SOL after database is updated
       const vaultPrivateKey = Deno.env.get('VAULT_PRIVATE_KEY');
       if (!vaultPrivateKey) {
         throw new Error('Vault private key not configured');
@@ -158,10 +222,10 @@ Deno.serve(async (req) => {
           new Uint8Array(JSON.parse(vaultPrivateKey))
         );
         console.log('Vault keypair created. Public key:', vaultKeypair.publicKey.toString());
-        console.log('Expected vault address:', VAULT_WALLET);
+        console.log('Expected vault address:', VAULT_ADDRESS);
         
-        if (vaultKeypair.publicKey.toString() !== VAULT_WALLET) {
-          throw new Error(`Vault keypair mismatch! Generated: ${vaultKeypair.publicKey.toString()}, Expected: ${VAULT_WALLET}`);
+        if (vaultKeypair.publicKey.toString() !== VAULT_ADDRESS) {
+          throw new Error(`Vault keypair mismatch! Generated: ${vaultKeypair.publicKey.toString()}, Expected: ${VAULT_ADDRESS}`);
         }
       } catch (err) {
         throw new Error(`Failed to create vault keypair: ${err.message}`);
@@ -183,38 +247,23 @@ Deno.serve(async (req) => {
       transaction.feePayer = vaultKeypair.publicKey;
       transaction.sign(vaultKeypair);
 
-      signature = await connection.sendRawTransaction(transaction.serialize());
-      await connection.confirmTransaction(signature, 'confirmed');
+      txSignature = await connection.sendRawTransaction(transaction.serialize());
+      await connection.confirmTransaction(txSignature, 'confirmed');
 
       // Check if this transaction was already recorded
-      const dedupResult = await checkTransactionDuplicate(supabaseClient, signature);
+      const dedupResult = await checkTransactionDuplicate(supabaseClient, txSignature);
       if (dedupResult.isDuplicate) {
-        console.log('Withdrawal transaction already recorded:', signature);
+        console.log('Withdrawal transaction already recorded:', txSignature);
         return new Response(
           JSON.stringify({ 
             success: true,
-            signature,
+            signature: txSignature,
             amount: totalRewards,
             message: 'Withdrawal already processed',
             existingTransaction: dedupResult.existingTx
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
-      }
-
-      const { error: updateError } = await supabaseClient
-        .from('stakers')
-        .update({ 
-          pending_rewards: 0,
-          last_updated: new Date().toISOString(),
-          version: currentVersion + 1
-        })
-        .eq('wallet_address', walletAddress)
-        .eq('version', currentVersion);
-
-      if (updateError) {
-        console.error('Failed to update staker after successful withdrawal:', updateError);
-        throw new Error('Withdrawal succeeded but database update failed. Contact support with signature: ' + signature);
       }
 
       await supabaseClient
@@ -224,7 +273,7 @@ Deno.serve(async (req) => {
           type: 'reward',
           amount: totalRewards,
           token: 'SOL',
-          tx_signature: signature,
+          tx_signature: txSignature,
           status: 'completed'
         });
 
@@ -234,7 +283,7 @@ Deno.serve(async (req) => {
           wallet_address: walletAddress,
           amount: totalRewards,
           distribution_date: new Date().toISOString().split('T')[0],
-          tx_signature: signature
+          tx_signature: txSignature
         });
 
     } finally {
@@ -247,7 +296,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        signature,
+        signature: txSignature,
         amount: totalRewards
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

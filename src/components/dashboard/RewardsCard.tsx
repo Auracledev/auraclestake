@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Coins, Loader2, TrendingUp, AlertTriangle } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useWallet } from '@solana/wallet-adapter-react';
 
 interface RewardsCardProps {
   pendingRewards?: number;
@@ -40,6 +41,9 @@ export default function RewardsCard({
     setIsWithdrawing(true);
     try {
       await onWithdraw();
+    } catch (error) {
+      console.error('Withdrawal error:', error);
+      alert(error instanceof Error ? error.message : 'Failed to withdraw rewards');
     } finally {
       setIsWithdrawing(false);
     }
