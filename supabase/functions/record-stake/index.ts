@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from "@shared/cors.ts";
 import { checkRateLimit, RATE_LIMIT_CONFIGS } from "@shared/rate-limiter.ts";
 import { checkTransactionDuplicate } from "@shared/transaction-dedup.ts";
+import { verifyStakeTransaction } from "@shared/transaction-verification.ts";
 import { MAX_STAKE_AMOUNT, SIGNATURE_EXPIRY_MS } from "@shared/constants.ts";
 
 const STAKE_LOCK_DURATION = 120; // 120 seconds
@@ -99,6 +100,28 @@ Deno.serve(async (req) => {
       );
     }
 
+    // CRITICAL: Verify on-chain transaction BEFORE acquiring lock
+    if (type === 'stake') {
+      console.log('Verifying on-chain transaction...');
+      const verificationResult = await verifyStakeTransaction(
+        txSignature,
+        walletAddress,
+        parseFloat(amount)
+      );
+
+      if (!verificationResult.isValid) {
+        console.error('Transaction verification failed:', verificationResult.error);
+        return new Response(
+          JSON.stringify({ 
+            error: verificationResult.error || 'Transaction verification failed' 
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('Transaction verified successfully:', verificationResult);
+    }
+
     // ATOMIC LOCK CHECK AND SET for stake operations
     if (type === 'stake') {
       const lockUntil = new Date(Date.now() + STAKE_LOCK_DURATION * 1000).toISOString();
@@ -144,7 +167,7 @@ Deno.serve(async (req) => {
             staked_amount: newStakedAmount,
             last_updated: now,
             stake_locked_until: null,
-            first_staked_at: existingStaker.first_staked_at || now  // Preserve or set first_staked_at
+            first_staked_at: existingStaker.first_staked_at || now
           })
           .eq('wallet_address', walletAddress);
       } else {

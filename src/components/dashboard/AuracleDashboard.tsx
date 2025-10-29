@@ -49,6 +49,7 @@ export default function AuracleDashboard() {
   });
 
   const [loading, setLoading] = useState(true);
+  const [lastFetchTime, setLastFetchTime] = useState(0);
 
   // Helper to format AURACLE amounts without trailing zeros
   const formatAuracle = (amount: number) => {
@@ -77,13 +78,22 @@ export default function AuracleDashboard() {
     if (connected && publicKey) {
       fetchUserData();
 
+      // Throttled realtime updates - only fetch every 30 seconds max
       const channel = supabase
         .channel(`user_${publicKey.toString()}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'stakers', filter: `wallet_address=eq.${publicKey.toString()}` }, () => {
-          fetchUserData();
+          const now = Date.now();
+          if (now - lastFetchTime > 30000) { // 30 seconds throttle
+            setLastFetchTime(now);
+            fetchUserData();
+          }
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `wallet_address=eq.${publicKey.toString()}` }, () => {
-          fetchUserData();
+          const now = Date.now();
+          if (now - lastFetchTime > 30000) { // 30 seconds throttle
+            setLastFetchTime(now);
+            fetchUserData();
+          }
         })
         .subscribe();
 
@@ -91,7 +101,7 @@ export default function AuracleDashboard() {
         supabase.removeChannel(channel);
       };
     }
-  }, [connected, publicKey]);
+  }, [connected, publicKey, lastFetchTime]);
 
   const fetchPlatformStats = async () => {
     try {
