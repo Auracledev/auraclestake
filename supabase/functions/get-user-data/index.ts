@@ -175,8 +175,8 @@ Deno.serve(async (req) => {
             
             console.log('Staker weighted share:', stakerShare);
             
-            // Formula: (weighted_stake / total_weighted_stakes) × vault_SOL × 50% distributed over 1 week
-            const weeklyVaultDistribution = vaultSOL * 0.5;
+            // Formula: (weighted_stake / total_weighted_stakes) × vault_SOL × 70% distributed over 1 week
+            const weeklyVaultDistribution = vaultSOL * 0.7;
             const userWeeklyReward = weeklyVaultDistribution * stakerShare;
             
             console.log('Weekly vault distribution:', weeklyVaultDistribution);

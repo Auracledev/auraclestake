@@ -53,8 +53,8 @@ Deno.serve(async (req) => {
       console.error('Error fetching vault AURACLE balance:', error);
     }
 
-    // Calculate weekly reward pool (50% of vault balance)
-    const weeklyRewardPool = vaultSolBalance * 0.5;
+    // Calculate weekly reward pool (70% of vault balance)
+    const weeklyRewardPool = vaultSolBalance * 0.7;
 
     const stats = {
       total_staked: totalStaked,

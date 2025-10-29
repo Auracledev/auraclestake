@@ -10,6 +10,21 @@ const MAINNET_RPC = 'https://mainnet.helius-rpc.com/?api-key=e9ab9721-93fa-4533-
 const SECONDS_PER_WEEK = 7 * 24 * 60 * 60;
 const WITHDRAWAL_LOCK_TIMEOUT = 30000;
 
+// Loyalty boost tiers based on staking duration
+function getLoyaltyMultiplier(firstStakedAt: string | null): number {
+  if (!firstStakedAt) return 1.0;
+  
+  const stakingStart = new Date(firstStakedAt);
+  const now = new Date();
+  const daysStaked = (now.getTime() - stakingStart.getTime()) / (1000 * 60 * 60 * 24);
+  
+  if (daysStaked >= 180) return 1.5;      // Diamond: 6+ months = 1.5x
+  if (daysStaked >= 90) return 1.4;       // Platinum: 3-6 months = 1.4x
+  if (daysStaked >= 30) return 1.3;       // Gold: 1-3 months = 1.3x
+  if (daysStaked >= 7) return 1.1;        // Silver: 1-4 weeks = 1.1x
+  return 1.0;                              // Bronze: < 1 week = 1.0x
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -155,18 +170,34 @@ Deno.serve(async (req) => {
 
         const { data: allStakers } = await supabaseClient
           .from('stakers')
-          .select('staked_amount')
+          .select('staked_amount, first_staked_at')
           .gt('staked_amount', 0);
 
-        const totalStaked = allStakers?.reduce((sum, s) => sum + parseFloat(s.staked_amount), 0) || 0;
+        // Calculate total weighted stakes (with loyalty boost)
+        const totalWeightedStakes = allStakers?.reduce((sum, s) => {
+          const amount = parseFloat(s.staked_amount);
+          const multiplier = getLoyaltyMultiplier(s.first_staked_at);
+          return sum + (amount * multiplier);
+        }, 0) || 0;
 
-        if (totalStaked > 0) {
+        if (totalWeightedStakes > 0) {
           const stakedAmount = parseFloat(staker.staked_amount);
-          const stakerShare = stakedAmount / totalStaked;
+          const userMultiplier = getLoyaltyMultiplier(staker.first_staked_at);
+          const userWeightedStake = stakedAmount * userMultiplier;
+          const stakerShare = userWeightedStake / totalWeightedStakes;
           
-          const weeklyVaultDistribution = vaultSOL * 0.5;
+          const weeklyVaultDistribution = vaultSOL * 0.7;
           const userWeeklyReward = weeklyVaultDistribution * stakerShare;
           const rewardsPerSecond = userWeeklyReward / SECONDS_PER_WEEK;
+          
+          console.log('Withdrawal calculation:', {
+            stakedAmount,
+            userMultiplier,
+            userWeightedStake,
+            totalWeightedStakes,
+            stakerShare,
+            rewardsPerSecond
+          });
           
           const lastUpdated = new Date(staker.last_updated || staker.created_at);
           const now = new Date();

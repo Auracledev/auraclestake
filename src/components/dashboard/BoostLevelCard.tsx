@@ -1,18 +1,23 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Zap, TrendingUp } from "lucide-react";
+import { Zap, TrendingUp, Clock } from "lucide-react";
+import { useState, useEffect } from "react";
 
 interface BoostLevelCardProps {
   firstStakedAt?: string;
 }
 
-function calculateStakingDays(firstStakedAt: string): number {
+function calculateStakingTime(firstStakedAt: string): { days: number; hours: number; minutes: number } {
   const firstStaked = new Date(firstStakedAt);
   const now = new Date();
-  const diffTime = Math.abs(now.getTime() - firstStaked.getTime());
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays;
+  const diffTime = now.getTime() - firstStaked.getTime();
+  
+  const days = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diffTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((diffTime % (1000 * 60 * 60)) / (1000 * 60));
+  
+  return { days, hours, minutes };
 }
 
 function getLoyaltyBoost(stakingDays: number): { multiplier: number; level: string; color: string } {
@@ -32,6 +37,17 @@ function getNextTier(stakingDays: number): { days: number; level: string; multip
 }
 
 export default function BoostLevelCard({ firstStakedAt }: BoostLevelCardProps) {
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Update every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // 60 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
   if (!firstStakedAt) {
     return (
       <Card className="bg-gradient-to-br from-slate-900 to-slate-800 border-slate-700">
@@ -53,21 +69,30 @@ export default function BoostLevelCard({ firstStakedAt }: BoostLevelCardProps) {
     );
   }
 
-  const stakingDays = calculateStakingDays(firstStakedAt);
+  const { days: stakingDays, hours, minutes } = calculateStakingTime(firstStakedAt);
   const currentBoost = getLoyaltyBoost(stakingDays);
   const nextTier = getNextTier(stakingDays);
 
   const boostPercentage = ((currentBoost.multiplier - 1) * 100).toFixed(0);
   
   let progressValue = 0;
-  let daysUntilNext = 0;
+  let timeUntilNext = { days: 0, hours: 0, minutes: 0 };
   
   if (nextTier) {
     const previousTierDays = stakingDays < 7 ? 0 : stakingDays < 30 ? 7 : stakingDays < 60 ? 30 : 60;
     const tierRange = nextTier.days - previousTierDays;
     const daysIntoTier = stakingDays - previousTierDays;
     progressValue = (daysIntoTier / tierRange) * 100;
-    daysUntilNext = nextTier.days - stakingDays;
+    
+    const daysRemaining = nextTier.days - stakingDays - 1;
+    const hoursRemaining = 23 - hours;
+    const minutesRemaining = 60 - minutes;
+    
+    timeUntilNext = {
+      days: daysRemaining,
+      hours: hoursRemaining,
+      minutes: minutesRemaining
+    };
   } else {
     progressValue = 100;
   }
@@ -97,9 +122,11 @@ export default function BoostLevelCard({ firstStakedAt }: BoostLevelCardProps) {
               {currentBoost.multiplier}x
             </span>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500">Staking Days</span>
-            <span className="text-sm font-semibold text-white">{stakingDays} days</span>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-slate-500">Staking Time</span>
+            <span className="text-sm font-semibold text-white">
+              {stakingDays}d {hours}h {minutes}m
+            </span>
           </div>
           {boostPercentage !== "0" && (
             <div className="mt-2 flex items-center gap-1 text-xs text-green-400">
@@ -117,9 +144,13 @@ export default function BoostLevelCard({ firstStakedAt }: BoostLevelCardProps) {
               <span className="text-slate-300 font-semibold">{nextTier.multiplier}x</span>
             </div>
             <Progress value={progressValue} className="h-2" />
-            <p className="text-xs text-slate-500 text-center">
-              {daysUntilNext} days until {nextTier.level} tier
-            </p>
+            <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
+              <Clock className="h-3 w-3" />
+              <span className="font-mono">
+                {timeUntilNext.days}d {timeUntilNext.hours}h {timeUntilNext.minutes}m
+              </span>
+              <span className="text-slate-500">until {nextTier.level}</span>
+            </div>
           </div>
         ) : (
           <div className="bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 rounded-lg p-3 text-center">
